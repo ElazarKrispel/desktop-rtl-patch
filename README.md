@@ -53,6 +53,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Update-CodexRtl.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-CodexRtl.ps1
 ```
 
+## Safety: backup, rollback & updates
+
+- The original **Microsoft Store Codex is never modified** — the installer only *reads*
+  from it, so your real Codex always stays intact.
+- There is **no automatic re-patching** when Codex updates. The patched copy is frozen at
+  build time (this is why it can lag the Store version). Re-run `Update-CodexRtl.ps1` after
+  a Codex update to rebuild from the latest version.
+- On rebuild, the previous patched copy is **renamed to `CodexRtl.bak`** (not deleted)
+  before the new one is built — pass `-NoBackup` to skip. Roll back any time (Codex closed):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Restore-CodexRtl.ps1
+```
+
 ## How it works
 
 - **`src/codex-rtl-patch.js`** runs in the renderer. For each prose block whose
@@ -91,6 +105,7 @@ src/codex-rtl-patch.js        the injected renderer script (source of truth)
 scripts/Install-CodexRtl.ps1  build the patched copy + shortcut
 scripts/Update-CodexRtl.ps1   rebuild from the latest Store version
 scripts/Uninstall-CodexRtl.ps1 remove the patched copy + shortcut
+scripts/Restore-CodexRtl.ps1  roll back to the pre-rebuild backup
 scripts/lib/asar-edit.mjs     surgical, dependency-free asar editor (Node)
 scripts/lib/asar.ps1          pure-PowerShell asar reader (utility)
 test/bidi-harness.html        visual bidi test cases

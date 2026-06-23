@@ -28,6 +28,7 @@ param(
     [string]$Target = (Join-Path $env:LOCALAPPDATA 'OpenAI\CodexRtl'),
     [string]$PatchJs,
     [switch]$NoShortcut,
+    [switch]$NoBackup,
     [switch]$Force
 )
 
@@ -63,13 +64,20 @@ Write-Step "Target: $Target"
 
 # --- 2. prepare target ---------------------------------------------------------
 $targetApp = Join-Path $Target 'app'
+$backup    = "$Target.bak"
 if (Test-Path $Target) {
     if (-not $Force) { throw "Target already exists: $Target  (use -Force to rebuild)" }
     $running = Get-Process -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -and $_.Path.StartsWith($targetApp, [StringComparison]::OrdinalIgnoreCase) }
     if ($running) { throw "Codex (RTL) is running from $targetApp. Close it, then re-run." }
-    Write-Step "Removing existing target..."
-    Remove-Item -LiteralPath $Target -Recurse -Force
+    if ($NoBackup) {
+        Write-Step "Removing existing target (no backup)..."
+        Remove-Item -LiteralPath $Target -Recurse -Force
+    } else {
+        if (Test-Path $backup) { Write-Step "Replacing previous backup..."; Remove-Item -LiteralPath $backup -Recurse -Force }
+        Write-Step "Backing up existing install -> $(Split-Path $backup -Leaf)"
+        Rename-Item -LiteralPath $Target -NewName (Split-Path $backup -Leaf) -Force
+    }
 }
 New-Item -ItemType Directory -Force -Path $targetApp | Out-Null
 
@@ -118,3 +126,7 @@ if (-not $NoShortcut) {
 Write-Host ""
 Write-Host "[OK] RTL patch v0.2.0 installed." -ForegroundColor Green
 Write-Host "     Launch: $exe" -ForegroundColor Green
+if (-not $NoBackup -and (Test-Path $backup)) {
+    Write-Host "     Previous install backed up at: $backup" -ForegroundColor DarkGray
+    Write-Host "     Delete it once the new build works, or roll back with Restore-CodexRtl.ps1." -ForegroundColor DarkGray
+}
