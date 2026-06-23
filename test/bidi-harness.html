@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="he">
+<head>
+<meta charset="utf-8">
+<title>Codex RTL — bidi harness</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 20px;
+    background: #1b1b1f; color: #e6e6e6;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.6;
+  }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  h2 { font-size: 14px; margin: 22px 0 8px; color: #cdd3dd; border-bottom: 1px solid #33343a; padding-bottom: 4px; }
+  .legend { color: #9aa0aa; font-size: 12.5px; margin-bottom: 6px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: start; }
+  .col { border: 1px solid #33343a; border-radius: 9px; overflow: hidden; }
+  .col > .head { padding: 7px 11px; font-weight: 600; font-size: 13px; }
+  .none > .head { background: #3a1d1d; color: #ff9f97; }
+  .old  > .head { background: #3a2f17; color: #ffd591; }
+  .new  > .head { background: #163021; color: #8ff0b0; }
+  .case { padding: 9px 12px; border-top: 1px solid #2a2b31; }
+  .lbl { font-size: 10.5px; color: #8a909b; margin-bottom: 3px; direction: ltr; text-align: left; }
+  .body p, .body li { margin: 2px 0; }
+
+  /* assistant inline code pill — Codex class: inline rounded-sm border px-1 font-mono */
+  code.pill {
+    border-radius: 3px; border: 1px solid #4b4d57;
+    background: rgba(255,255,255,0.06); padding: 0 4px;
+    font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.86em; color: #d7c9ff;
+  }
+  /* user message paragraph — Codex class: text-base ... whitespace-pre-wrap */
+  p.usermsg { white-space: pre-wrap; }
+
+  /* ---- NEW patch CSS (verbatim subset from src/codex-rtl-patch.js) ---- */
+  .new .body [data-codex-rtl]{ text-align:start !important; }
+  .new .body :where(pre,code,kbd,samp){ direction:ltr !important; text-align:left !important; }
+  .new .body code{ unicode-bidi:isolate !important; }
+</style>
+</head>
+<body>
+  <h1>Codex Desktop RTL — bidi harness (3-way)</h1>
+  <div class="legend">
+    <b style="color:#ff9f97">NONE</b> = app default (no patch) ·
+    <b style="color:#ffd591">OLD v0.1.0</b> = parent <code>unicode-bidi:plaintext</code> + forced dir ·
+    <b style="color:#8ff0b0">NEW v0.2.0</b> = real <code>dir=rtl</code> (no plaintext), code isolated via CSS.
+    Correct = Hebrew reads right-to-left; English/code sits inline at its logical spot.
+  </div>
+
+  <h2>Surface A — assistant markdown (real &lt;code&gt; pills)</h2>
+  <div class="cols" id="A"></div>
+
+  <h2>Surface B — user message (raw text, literal backticks, white-space:pre-wrap)</h2>
+  <div class="cols" id="B"></div>
+
+<script>
+  var surfaceA = [
+    { n:1, label:"Hebrew + `english`",        html:'<p>זה נראה מוזר <code class="pill">english</code> אבל אם זה</p>' },
+    { n:2, label:"Hebrew + `english` no-space", html:'<p>זה נראה מוזר<code class="pill">english</code>אבל אם זה</p>' },
+    { n:3, label:"path mid-sentence",        html:'<p>הסרתי re-export מיותר מ־<code class="pill">src/lib/google-calendar.ts</code> והכל תקין</p>' },
+    { n:4, label:"line STARTS with code",    html:'<p><code class="pill">npm run build</code> עבר בהצלחה והכול ירוק</p>' },
+    { n:5, label:"RTL list with code",       html:'<ul><li>הריצו <code class="pill">npm ci</code> להתקנה</li><li>בדקו <code class="pill">dist/index.js</code></li></ul>' }
+  ];
+  var surfaceB = [
+    { n:1, label:"free english in Hebrew",   text:"שלום וברכה אני עכשיו כותב ב: english וזה נראה טוב ביחד עם עברית" },
+    { n:2, label:"`english` literal backticks", text:"זה נראה מוזר `english` אבל אם זה" },
+    { n:3, label:"`english` no spaces",      text:"זה נראה מוזר`english`אבל אם זה" },
+    { n:4, label:"path `code` in user msg",  text:"תבדוק את `src/lib/google-calendar.ts` בבקשה" }
+  ];
+
+  function isRTLChar(c){ return (c>=0x0590&&c<=0x05ff)||(c>=0x0600&&c<=0x06ff); }
+  function hasHeb(t){ for(var i=0;i<t.length;i++){ if(isRTLChar(t.charCodeAt(i))) return true; } return false; }
+  function textNoCode(el){
+    var out="", n=el.childNodes||[];
+    for(var i=0;i<n.length;i++){ var x=n[i];
+      if(x.nodeType===3) out+=x.textContent||"";
+      else if(x.nodeType===1 && !x.matches("pre,code,kbd,samp")) out+=textNoCode(x); }
+    return out;
+  }
+  function applyMode(container, mode){
+    if(mode==="none") return;
+    container.querySelectorAll("p,li,ul,ol,h1,h2,h3,h4,h5,h6,blockquote").forEach(function(b){
+      if(!hasHeb(textNoCode(b))) return;
+      if(mode==="old"){ b.setAttribute("dir","rtl"); b.style.direction="rtl"; b.style.unicodeBidi="plaintext"; b.style.textAlign="start"; }
+      else { b.setAttribute("dir","rtl"); b.setAttribute("data-codex-rtl","1"); }
+    });
+    if(mode==="old"){
+      container.querySelectorAll("code,pre").forEach(function(c){
+        c.setAttribute("dir","ltr"); c.style.direction="ltr"; c.style.textAlign="left"; c.style.unicodeBidi="isolate"; });
+    }
+  }
+  var MODES = [["none","NONE — no patch (baseline)"],["old","OLD v0.1.0 — plaintext"],["new","NEW v0.2.0 — real dir"]];
+  function buildSurface(rootId, items, isUser){
+    var root=document.getElementById(rootId);
+    MODES.forEach(function(m){
+      var col=document.createElement("div"); col.className="col "+m[0];
+      col.innerHTML='<div class="head">'+m[1]+'</div>';
+      var body=document.createElement("div"); body.className="body";
+      items.forEach(function(c){
+        var wrap=document.createElement("div"); wrap.className="case";
+        var lbl=document.createElement("div"); lbl.className="lbl"; lbl.textContent="#"+c.n+"  "+c.label;
+        var content=document.createElement("div");
+        if(isUser){ var p=document.createElement("p"); p.className="usermsg"; p.textContent=c.text; content.appendChild(p); }
+        else { content.innerHTML=c.html; }
+        applyMode(content, m[0]);
+        wrap.appendChild(lbl); wrap.appendChild(content); body.appendChild(wrap);
+      });
+      col.appendChild(body); root.appendChild(col);
+    });
+  }
+  buildSurface("A", surfaceA, false);
+  buildSurface("B", surfaceB, true);
+</script>
+</body>
+</html>
