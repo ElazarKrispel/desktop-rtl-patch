@@ -20,6 +20,9 @@ $repoRoot  = Split-Path -Parent $scriptDir
 if (Test-CodexRtlRunning) {
     throw "Codex (RTL) is currently running. Close it, then re-run the installer."
 }
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw "Node.js is required but was not found on PATH. Install it from https://nodejs.org (LTS), reopen PowerShell, and re-run."
+}
 
 Write-Host "[*] Building the patched Codex copy (first run copies ~1.6 GB)..." -ForegroundColor Cyan
 Invoke-CodexRtlUpdate -Force

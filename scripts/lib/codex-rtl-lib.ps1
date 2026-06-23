@@ -143,7 +143,7 @@ function Invoke-Robocopy {
 function Invoke-AsarInject {
     param([string]$AsarPath, [string]$PatchJs, [switch]$NoBak)
     $node = (Get-Command node -ErrorAction SilentlyContinue).Source
-    if (-not $node) { throw 'Node.js not found on PATH.' }
+    if (-not $node) { throw 'Node.js is required (it edits the app bundle) but was not found. Install it from https://nodejs.org and re-run.' }
     $editor = Get-AsarEditPath
     if (-not $editor) { throw 'asar-edit.mjs not found.' }
     $bak = if ($NoBak) { '--no-bak' } else { '' }
