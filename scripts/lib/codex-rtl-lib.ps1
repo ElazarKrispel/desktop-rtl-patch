@@ -124,9 +124,11 @@ function Resolve-CodexSource {
 }
 
 function Test-CodexRtlRunning {
-    # Is the patched copy (CodexRtl) currently running?
+    # Is the patched copy (CodexRtl) currently running? Match the exact folder so
+    # CodexRtl.staging / CodexRtl.old never count as the live copy.
+    $prefix = $script:CopyRoot.TrimEnd('\') + '\'
     $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.Path -and $_.Path.StartsWith($script:CopyRoot, [StringComparison]::OrdinalIgnoreCase)
+        $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
     }
     return [bool]$procs
 }
