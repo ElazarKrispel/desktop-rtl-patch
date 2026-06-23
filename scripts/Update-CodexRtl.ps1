@@ -1,15 +1,17 @@
 <#
 .SYNOPSIS
-    Rebuilds the RTL-patched Codex copy from the current Microsoft Store version.
+    Manually re-apply the Codex RTL patch from the current Codex version.
 .DESCRIPTION
-    The Store app updates on its own; the patched copy stays on whatever version it
-    was built from. Run this after Codex updates to re-copy the latest version and
-    re-apply the RTL patch. Equivalent to Install-CodexRtl.ps1 -Force.
+    Normally the watcher does this automatically. Run this to force it now.
+    Builds to staging and swaps in place only while Codex (RTL) is closed.
+.PARAMETER Force
+    Rebuild even if the Codex version has not changed.
 #>
 [CmdletBinding()]
-param(
-    [string]$Target = (Join-Path $env:LOCALAPPDATA 'OpenAI\CodexRtl')
-)
+param([switch]$Force)
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-& (Join-Path $scriptDir 'Install-CodexRtl.ps1') -Target $Target -Force
+. (Join-Path $scriptDir 'lib\codex-rtl-lib.ps1')
+Invoke-CodexRtlUpdate -Force:$Force
+$state = Read-RtlState
+if ($state) { Write-Host "[OK] Codex (RTL) at v$($state.version) (mode=$($state.mode))." -ForegroundColor Green }

@@ -13,7 +13,7 @@
 
 import fs from "node:fs";
 
-const [, , asarPath, patchJsPath] = process.argv;
+const [, , asarPath, patchJsPath, bakArg] = process.argv;
 if (!asarPath || !patchJsPath) {
   console.error("usage: node asar-edit.mjs <app.asar> <codex-rtl-patch.js>");
   process.exit(2);
@@ -92,7 +92,13 @@ head.writeUInt32LE(payloadSize, 8);
 head.writeUInt32LE(len, 12);
 jsonOut.copy(head, 16);
 
-if (!fs.existsSync(asarPath + ".bak")) fs.writeFileSync(asarPath + ".bak", raw);
+// Backup: default to <asar>.bak next to the file; pass "--no-bak" when the
+// caller keeps its own backup elsewhere (e.g. in-place patching of WindowsApps,
+// where we must not create new files in the protected package directory).
+if (bakArg !== "--no-bak") {
+  const bakPath = bakArg && bakArg.length ? bakArg : asarPath + ".bak";
+  if (!fs.existsSync(bakPath)) fs.writeFileSync(bakPath, raw);
+}
 const fd = fs.openSync(asarPath, "w");
 fs.writeSync(fd, head);
 fs.writeSync(fd, dataSection);

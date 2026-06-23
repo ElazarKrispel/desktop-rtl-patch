@@ -1,29 +1,25 @@
 <#
 .SYNOPSIS
-    Removes the RTL-patched Codex copy and its Start-menu shortcut.
-.PARAMETER Target
-    The patched copy root. Default: %LOCALAPPDATA%\OpenAI\CodexRtl
+    Remove the Codex RTL patch: the patched copy, shortcut, watcher task and state.
+    The original Microsoft Store Codex is not affected.
 #>
 [CmdletBinding()]
-param(
-    [string]$Target = (Join-Path $env:LOCALAPPDATA 'OpenAI\CodexRtl')
-)
-$ErrorActionPreference = 'Stop'
-function Write-Step($m) { Write-Host "[*] $m" -ForegroundColor Cyan }
+param()
+$ErrorActionPreference = 'Continue'
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $scriptDir 'lib\codex-rtl-lib.ps1')
 
-$targetApp = Join-Path $Target 'app'
-$running = Get-Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -and $_.Path.StartsWith($targetApp, [StringComparison]::OrdinalIgnoreCase) }
-if ($running) { throw "Codex (RTL) is running from $targetApp. Close it, then re-run." }
+if (Test-CodexRtlRunning) { throw "Codex (RTL) is running. Close it, then re-run." }
 
-if (Test-Path $Target) {
-    Write-Step "Removing $Target ..."
-    Remove-Item -LiteralPath $Target -Recurse -Force
-} else {
-    Write-Step "Nothing to remove at $Target"
+Unregister-CodexRtlWatcher
+
+foreach ($d in @($script:CopyRoot, $script:Staging, $script:OldRoot, $script:BinDir)) {
+    if (Test-Path $d) {
+        try { Remove-Item -LiteralPath $d -Recurse -Force; Write-RtlLog "removed $d" }
+        catch { Write-RtlLog "could not remove $d : $($_.Exception.Message)" }
+    }
 }
+if (Test-Path $script:ShortcutPath) { Remove-Item -LiteralPath $script:ShortcutPath -Force }
+if (Test-Path $script:StateFile)    { Remove-Item -LiteralPath $script:StateFile -Force }
 
-$lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Codex (RTL).lnk'
-if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force; Write-Step "Removed shortcut" }
-
-Write-Host "[OK] Uninstalled. Your original Microsoft Store Codex is unaffected." -ForegroundColor Green
+Write-Host "[OK] Uninstalled. The original Microsoft Store Codex is unaffected." -ForegroundColor Green
