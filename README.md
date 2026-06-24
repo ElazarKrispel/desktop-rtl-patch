@@ -16,7 +16,7 @@ changed. **No Node.js is required** (it uses the Node that already ships inside 
 ## התקנה מהירה (עברית) 🚀
 
 1. ודאו ש-**Codex** מותקן (מ-Microsoft Store).
-2. מורידים את הגרסה האחרונה: בעמוד הפרויקט לוחצים על **Releases**, מורידים את קובץ ה-**ZIP**,
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/codex-desktop-rtl-patch/archive/refs/tags/v1.1.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
 3. דאבל-קליק על **`Install-Codex-RTL.vbs`**. נפתח חלון התקנה בעברית, לוחצים **"התקן"**
    וממתינים כדקה.
@@ -33,7 +33,7 @@ changed. **No Node.js is required** (it uses the Node that already ships inside 
 
 ## Install (the easy way)
 
-1. Download the latest release **ZIP** from the **Releases** page and extract it.
+1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/codex-desktop-rtl-patch/archive/refs/tags/v1.1.0.zip)** and extract it.
 2. Double-click **`Install-Codex-RTL.vbs`** (or `Install-Codex-RTL.cmd`). A small window opens.
 3. Click **Install** and wait about a minute.
 
