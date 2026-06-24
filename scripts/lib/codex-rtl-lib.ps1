@@ -28,17 +28,19 @@ $script:InstallLogFile = $null
 $script:StepSink   = $null   # { param($key,$percent,$marquee) }  optionally set by the GUI
 $script:UiSink     = $null   # { param($message) }                optionally set by the GUI
 
-# Shortcut: differentiate from the regular Codex by NAME only, keeping the ORIGINAL
-# Codex icon. The label "Codex <ivrit>" is built from Hebrew code points so this file
-# stays ASCII (avoids any PowerShell 5.1 codepage mangling of a literal).
-$script:ShortcutLabel   = 'Codex ' + (-join @([char]0x05E2, [char]0x05D1, [char]0x05E8, [char]0x05D9, [char]0x05EA))
+# Shortcut: differentiate from the regular Codex by NAME only ("Codex (RTL)"),
+# keeping the ORIGINAL Codex icon. The app is not "in Hebrew", it only adds RTL
+# support, so the name says (RTL) rather than implying a Hebrew build.
+$script:ShortcutLabel   = 'Codex (RTL)'
 $script:ShortcutStart   = Join-Path ([Environment]::GetFolderPath('Programs')) ($script:ShortcutLabel + '.lnk')
 $script:ShortcutDesktop = Join-Path ([Environment]::GetFolderPath('Desktop'))  ($script:ShortcutLabel + '.lnk')
 $script:ShortcutPath    = $script:ShortcutStart   # back-compat alias
-# Legacy shortcut names from earlier versions, removed so users do not see duplicates.
+# Legacy shortcut names from earlier builds (the short-lived "Codex <ivrit>" name),
+# removed so users never see duplicates. Built from code points (keeps this file ASCII).
+$script:_ivrit = 'Codex ' + (-join @([char]0x05E2, [char]0x05D1, [char]0x05E8, [char]0x05D9, [char]0x05EA))
 $script:LegacyShortcuts = @(
-    (Join-Path ([Environment]::GetFolderPath('Programs')) 'Codex (RTL).lnk'),
-    (Join-Path ([Environment]::GetFolderPath('Desktop'))  'Codex (RTL).lnk')
+    (Join-Path ([Environment]::GetFolderPath('Programs')) ($script:_ivrit + '.lnk')),
+    (Join-Path ([Environment]::GetFolderPath('Desktop'))  ($script:_ivrit + '.lnk'))
 )
 $script:ShortcutPaths = @($script:ShortcutStart, $script:ShortcutDesktop) + $script:LegacyShortcuts
 
@@ -96,6 +98,22 @@ function Show-RtlToast {
     } catch { Write-RtlLog "toast failed: $($_.Exception.Message)" }
 }
 
+function Hide-RtlConsole {
+    # Reliably hide the console window of the current process, so a GUI or a
+    # background script shows no black PowerShell window (more robust than relying
+    # on -WindowStyle Hidden alone). Safe no-op when there is no console.
+    try {
+        if (-not ([System.Management.Automation.PSTypeName]'CodexRtl.ConsoleWin').Type) {
+            Add-Type -Namespace CodexRtl -Name ConsoleWin -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+'@
+        }
+        $h = [CodexRtl.ConsoleWin]::GetConsoleWindow()
+        if ($h -ne [System.IntPtr]::Zero) { [void][CodexRtl.ConsoleWin]::ShowWindow($h, 0) }  # SW_HIDE = 0
+    } catch {}
+}
+
 # ----------------------------------------------------------------- state
 
 function Read-RtlState {
@@ -122,6 +140,7 @@ function Write-RtlState {
         lastUpdatedAt   = $now
     }
     [System.IO.File]::WriteAllText($script:StateFile, (([pscustomobject]$full) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+    Write-RtlLog "State written: $($script:StateFile) (sig=$($State.sourceSignature))"
 }
 
 # ----------------------------------------------------------------- lock
@@ -464,7 +483,20 @@ function Register-CodexRtlWatcher {
     Write-RtlLog "Registered logon watcher (HKCU\Run)."
 }
 
+function Stop-CodexRtlWatcher {
+    # Kill any running watcher process(es) so a freshly deployed watcher (e.g. one
+    # that now hides its console) can replace it, and so uninstall leaves none behind.
+    try {
+        Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine -like '*Watch-CodexRtl*' } |
+            ForEach-Object {
+                try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-RtlLog "Stopped watcher PID $($_.ProcessId)." } catch {}
+            }
+    } catch {}
+}
+
 function Unregister-CodexRtlWatcher {
+    Stop-CodexRtlWatcher
     try { Remove-ItemProperty -Path $script:RunKey -Name $script:RunName -ErrorAction Stop; Write-RtlLog 'Removed logon watcher.' }
     catch { Write-RtlLog 'No logon watcher to remove.' }
     # also remove any legacy scheduled task from earlier versions
@@ -473,6 +505,7 @@ function Unregister-CodexRtlWatcher {
 
 function Start-CodexRtlWatcher {
     param([string]$WatchScript)
+    Stop-CodexRtlWatcher   # replace any existing (possibly visible) watcher with the fresh one
     $ps = (Get-Command powershell.exe).Source
     Start-Process -FilePath $ps -WindowStyle Hidden -ArgumentList @(
         '-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', $WatchScript, '-Loop')

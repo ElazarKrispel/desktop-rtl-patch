@@ -7,6 +7,7 @@
 param([switch]$Loop)
 $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot 'codex-rtl-lib.ps1')
+Hide-RtlConsole   # background watcher: never show a console window
 
 $created = $false
 $mutex = New-Object System.Threading.Mutex($true, 'Local\CodexRtlPatchWatcher', [ref]$created)

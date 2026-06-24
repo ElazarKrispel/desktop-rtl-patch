@@ -50,6 +50,7 @@ if (-not (Test-Path $script:LibPath)) {
     return
 }
 . $script:LibPath
+Hide-RtlConsole   # hide the background PowerShell console; the GUI window stays visible
 try { Test-RtlPackage -RepoRoot $script:RepoRoot | Out-Null }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
@@ -103,7 +104,7 @@ function Add-LogLine([string]$text) {
 
 # --- Build the window --------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'התקנת Codex עברית (RTL)'
+$form.Text = 'התקנת Codex (RTL)'
 $form.StartPosition = 'CenterScreen'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
@@ -113,6 +114,15 @@ $form.MinimumSize = New-Object System.Drawing.Size(560, 460)
 $form.ClientSize  = New-Object System.Drawing.Size(580, 470)
 $form.MaximizeBox = $false
 $form.FormBorderStyle = 'Sizable'
+# Use Codex's own icon for the installer window (no separate branded icon).
+try {
+    $iconExe = $null
+    $cands = @((Join-Path $script:CopyRoot 'app\Codex.exe'))
+    $srcForIcon = $null; try { $srcForIcon = Resolve-CodexSource } catch {}
+    if ($srcForIcon) { $cands += (Join-Path $srcForIcon.AppDir 'Codex.exe') }
+    foreach ($c in $cands) { if (Test-Path $c) { $iconExe = $c; break } }
+    if ($iconExe) { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconExe) }
+} catch {}
 
 $root = New-Object System.Windows.Forms.TableLayoutPanel
 $root.Dock = 'Fill'
@@ -127,14 +137,14 @@ foreach ($h in 0, 0, 0, 0, 100, 0) {
 $form.Controls.Add($root)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'התקנת Codex בעברית (RTL)'
+$title.Text = 'תמיכת עברית (RTL) ל-Codex'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.AutoSize = $true
 $title.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 8)
 $root.Controls.Add($title, 0, 0)
 
 $desc = New-Object System.Windows.Forms.Label
-$desc.Text = 'מוסיף תמיכת עברית (כיוון מימין לשמאל) ל-Codex, בלי הרשאות מנהל. נוצר עותק נפרד בשם "Codex עברית"; ה-Codex המקורי לא משתנה. ההעתקה הראשונה לוקחת כדקה.'
+$desc.Text = 'מוסיף תמיכת עברית (כיוון מימין לשמאל) ל-Codex, בלי הרשאות מנהל. נוצר עותק נפרד בשם "Codex (RTL)"; ה-Codex המקורי לא משתנה. ההעתקה הראשונה לוקחת כדקה.'
 $desc.AutoSize = $true
 $desc.MaximumSize = New-Object System.Drawing.Size(520, 0)
 $desc.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 10)
@@ -231,8 +241,8 @@ function Update-Buttons {
         'Installed' {
             $st2 = Read-RtlState
             $ver = if ($st2.codexVersion) { $st2.codexVersion } elseif ($st2.version) { $st2.version } else { '?' }
-            $status.Text = "מותקן ומוכן (Codex v$ver). אפשר לפתוח את Codex עברית."
-            $btnPrimary.Text = 'פתח את Codex עברית'; $btnPrimary.Enabled = $true; $btnPrimary.Tag = 'open'
+            $status.Text = "מותקן ומוכן (Codex v$ver). אפשר לפתוח את Codex (RTL)."
+            $btnPrimary.Text = 'פתח את Codex (RTL)'; $btnPrimary.Enabled = $true; $btnPrimary.Tag = 'open'
             $btnSecondary.Visible = $true; $btnSecondary.Enabled = $true
         }
     }
@@ -241,7 +251,7 @@ function Update-Buttons {
 # --- Background install ------------------------------------------------------
 function Start-Install {
     if (Test-CodexRtlRunning) {
-        [System.Windows.Forms.MessageBox]::Show('Codex עברית פתוח כרגע. סגור/י אותו ואז נסה/י שוב.', 'Codex RTL', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show('Codex (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.', 'Codex RTL', 'OK', 'Warning') | Out-Null
         return
     }
     $script:Sync.Done = $false; $script:Sync.Ok = $false; $script:Sync.Err = $null
@@ -315,7 +325,7 @@ $timer.Add_Tick({
             $script:Sync.Busy = $false
             if ($script:Sync.Ok) {
                 $script:ProgressBar.Style = 'Continuous'; $script:ProgressBar.Value = 100
-                $script:StatusLabel.Text = 'ההתקנה הושלמה! אפשר לפתוח את Codex עברית.'
+                $script:StatusLabel.Text = 'ההתקנה הושלמה! אפשר לפתוח את Codex (RTL).'
                 Add-LogLine 'ההתקנה הושלמה בהצלחה.'
             }
             else {
