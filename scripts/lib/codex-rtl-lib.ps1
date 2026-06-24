@@ -11,7 +11,7 @@
 # This file is ASCII-only; the Hebrew shortcut label is built from code points so it
 # is safe regardless of how Windows PowerShell 5.1 decodes the file.
 
-$script:PatchVersion  = '1.0.0'
+$script:PatchVersion  = '1.1.0'
 $script:SchemaVersion = 1
 $script:StateDir   = Join-Path $env:LOCALAPPDATA 'CodexRtlPatch'
 $script:BinDir     = Join-Path $script:StateDir 'bin'

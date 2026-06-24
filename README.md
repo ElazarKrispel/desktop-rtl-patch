@@ -1,7 +1,8 @@
 # codex-desktop-rtl-patch
 
 **Hebrew / Arabic (right-to-left) support for the OpenAI Codex desktop app on Windows**,
-with automatic re-patching when Codex updates, and **no administrator rights**.
+with a friendly graphical installer, automatic re-patching when Codex updates, and
+**no administrator rights**.
 
 The Codex desktop app shows all chat text left-to-right, which makes Hebrew/Arabic look
 broken. This makes Hebrew/Arabic **prose** flow right-to-left (correct alignment and
@@ -9,106 +10,106 @@ punctuation), while keeping code blocks and inline `` `code` `` strictly left-to
 correctly placed inside a sentence, even when an English `` `token` `` sits in the middle of
 a Hebrew line.
 
+It installs a **separate copy** named **"Codex (RTL)"**; your original Codex is never
+changed. **No Node.js is required** (it uses the Node that already ships inside Codex).
+
 ## התקנה מהירה (עברית) 🚀
 
-1. ודאו שמותקנים:
-   * **Codex** (מ-Microsoft Store).
-   * **Node.js** מ-<https://nodejs.org> (לוחצים "LTS"). בודקים בטרמינל: `node --version`.
-2. מורידים את הפרויקט: כפתור **Code → Download ZIP** למעלה, ומחלצים. (או `git clone`.)
-3. פותחים **PowerShell** בתיקיית הפרויקט (לחיצה ימנית בתוך התיקייה → "Open in Terminal", או Shift+ימני → "Open PowerShell window here") ומריצים:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\Install-CodexRtl.ps1
-   ```
-4. פותחים את **"Codex (RTL)"** מתפריט Start. זהו! 🎉
+1. ודאו ש-**Codex** מותקן (מ-Microsoft Store).
+2. מורידים את הגרסה האחרונה: בעמוד הפרויקט לוחצים על **Releases**, מורידים את קובץ ה-**ZIP**,
+   ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
+3. דאבל-קליק על **`Install-Codex-RTL.vbs`**. נפתח חלון התקנה בעברית, לוחצים **"התקן"**
+   וממתינים כדקה.
+4. פותחים את **"Codex (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
 
-> ההרצה הראשונה מעתיקה כ-1.6GB ולוקחת כדקה. מכאן זה מתעדכן לבד.
+> בלי הרשאות מנהל ובלי להתקין Node.js. ההעתקה הראשונה לוקחת כדקה, ומכאן זה מתעדכן לבד.
 > תמיד פותחים דרך **"Codex (RTL)"**. ה-Codex הרגיל נשאר LTR ולא משתנה.
 
 ## Requirements
 
 * **Codex desktop**, from the Microsoft Store (`winget install Codex -s msstore`) or a direct download.
-* **Node.js** on `PATH`, from <https://nodejs.org> (used only to edit the app bundle). Check with `node --version`.
-* **Windows PowerShell 5.1+** (built into Windows).
-* **No administrator rights** at any point.
+* **Windows 10 or 11** with Windows PowerShell 5.1 (built in).
+* **No administrator rights**, and **no Node.js** (the patch uses Codex's bundled Node).
 
-## Install
+## Install (the easy way)
 
-Clone (or **Code → Download ZIP** and extract), then run the installer:
+1. Download the latest release **ZIP** from the **Releases** page and extract it.
+2. Double-click **`Install-Codex-RTL.vbs`** (or `Install-Codex-RTL.cmd`). A small window opens.
+3. Click **Install** and wait about a minute.
+
+It builds a patched copy at `%LOCALAPPDATA%\OpenAI\CodexRtl`, adds **"Codex (RTL)"** shortcuts
+to the Desktop and Start menu, and starts a background watcher that keeps the copy patched
+across Codex updates. **Your original Codex is never touched.**
+
+## Advanced: one-line install
+
+For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-git clone https://github.com/ElazarKrispel/codex-desktop-rtl-patch
-cd codex-desktop-rtl-patch
-powershell -ExecutionPolicy Bypass -File .\scripts\Install-CodexRtl.ps1
+irm https://raw.githubusercontent.com/ElazarKrispel/codex-desktop-rtl-patch/v1.1.0/install.ps1 | iex
 ```
 
-It builds a patched copy at `%LOCALAPPDATA%\OpenAI\CodexRtl`, adds a **"Codex (RTL)"**
-Start-menu shortcut, and starts a background watcher that keeps it patched across Codex
-updates. **Your original Store Codex is never touched.**
-
-> If "Codex (RTL)" is already running, close it first. The installer swaps the new copy into
-> place only while it is closed.
+This downloads the same code, pinned to the `v1.1.0` tag, and opens the installer window.
+Running a remote script means trusting it; if you are unsure, prefer the ZIP download above
+(it is exactly the same code, and you can read it first).
 
 ## Using it
 
 * **Always launch Codex from the "Codex (RTL)" shortcut.** That is the patched one.
 * The plain "Codex" keeps working too, but it stays left-to-right (unpatched).
 * Both share the same account and conversations, so you see the same threads either way.
-* Don't run both at the same time (they share data); just use "Codex (RTL)". Tip: pin it to
-  your taskbar.
+* Don't run both at the same time (they share data); just use "Codex (RTL)".
 
 ## Automatic updates
 
 The Store updates Codex on its own, so the patched copy would otherwise fall behind. A small
 **background watcher** keeps them in sync:
 
-* It starts at logon via your own `HKCU\…\Run` key (**no admin**) and re-checks every ~6 hours.
+* It starts at logon via your own `HKCU\…\Run` key (**no admin**) and re-checks periodically.
 * When Codex updates, it rebuilds the patched copy in a **staging** folder and swaps it in
   **only while "Codex (RTL)" is closed** (atomic rename). It never restarts or breaks a
   running Codex; if you are using it, the swap waits until you next close it.
-* Force an update now: `powershell -File .\scripts\Update-CodexRtl.ps1`
-* Install without the watcher: `Install-CodexRtl.ps1 -NoWatcher`.
+* Force an update now from the installer window (**"התקן מחדש"**), or run
+  `powershell -ExecutionPolicy Bypass -File .\scripts\Update-CodexRtl.ps1`.
 
 ## Uninstall
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-CodexRtl.ps1
-```
+* In the installer window, click **"הסר התקנה"** (Remove).
+* Or run: `powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-CodexRtl.ps1`
 
-Removes the patched copy, the shortcut, the watcher and its state. The Store Codex is
-unaffected.
+It removes the patched copy, the shortcuts, the watcher and its state. The log folder is kept
+for diagnostics (add `-PurgeLogs` to delete it too). The original Codex is unaffected.
 
 ## FAQ / troubleshooting
 
-* **Does the regular Codex now show RTL too?** No, only "Codex (RTL)". The plain Store Codex
-  is intentionally left untouched (LTR).
+* **Does the regular Codex now show RTL too?** No, only "Codex (RTL)". The plain Codex is
+  intentionally left untouched (LTR).
 * **Will I lose my chats or need to log in again?** No. Both apps share the same account and
   conversations; "Codex (RTL)" is just a patched copy of the same app.
-* **"Node.js was not found."** Install it from <https://nodejs.org> (LTS), reopen PowerShell,
-  and re-run.
-* **"Codex (RTL) is running."** Close it first (check the system tray), then re-run.
-* **The install command is blocked.** Use exactly `powershell -ExecutionPolicy Bypass -File
-  .\scripts\Install-CodexRtl.ps1`. The `-ExecutionPolicy Bypass` part is what lets it run.
-* **Did it work?** After installing, launch "Codex (RTL)" and type a Hebrew sentence with an
-  English `` `token` `` in backticks. It should read right-to-left with the code in place.
+* **Do I need to install Node.js?** No. The patch uses the Node runtime bundled inside Codex.
+* **A PowerShell window flashes when I use the `.cmd`.** That is just the launcher closing.
+  Use `Install-Codex-RTL.vbs` for no window at all.
+* **"Codex (RTL) is running."** Close it first (check the system tray), then try again.
+* **Something failed.** In the window, click **"העתק לוג"** (Copy log) or **"פתח תיקיית לוגים"**
+  and send the log file; it has the technical details.
+* **Did it work?** Launch "Codex (RTL)" and type a Hebrew sentence with an English `` `token` ``
+  in backticks. It should read right-to-left with the code in place.
 
 ## How it works
 
 * **`src/codex-rtl-patch.js`** runs in the renderer. For each prose block whose non-code text
   contains Hebrew/Arabic it sets a real **`dir="rtl"`** attribute (correct ordering,
-  `text-align: start` alignment, native bidi isolation). It avoids `unicode-bidi: plaintext`
-  and inline styles; the previous approach used both, and React silently reverted the inline
-  styles, which is why inline code intermittently "broke back" to LTR. Injected CSS forces
-  every code surface to `direction: ltr` + `unicode-bidi: isolate`. A `MutationObserver`
-  re-applies `dir` to streamed or late content and survives React re-renders.
-* **`scripts/lib/asar-edit.mjs`** surgically injects the script into `app.asar` (it appends to
-  the data section and rewrites the header, with no full repack). Codex's "owl-electron"
-  runtime loads `app.asar` only, and its `OnlyLoadAppFromAsar` and asar-integrity fuses are
-  disabled, so no binary or signature patching is needed.
+  `text-align: start` alignment, native bidi isolation). Injected CSS forces every code
+  surface to `direction: ltr` + `unicode-bidi: isolate`. A `MutationObserver` re-applies `dir`
+  to streamed or late content and survives React re-renders.
+* **`scripts/Install-CodexRtlGui.ps1`** is the graphical installer (WinForms, Hebrew). It wraps
+  the shared library, shows progress, and offers install / update / open / uninstall.
 * **`scripts/lib/codex-rtl-lib.ps1`** resolves the Codex install, builds the patched copy with
-  staging plus atomic swap, and manages the watcher.
-* **Store vs. direct installs:** Store (MSIX) files are protected by a TrustedInstaller process
-  trust label, so they cannot be patched in place; the patch uses a **copy**. A direct
-  (non-Store) install is writable and is patched **in place**. The installer auto-detects which.
+  staging plus an atomic swap, injects the script with Codex's bundled Node, and manages the
+  watcher. It **only reads** the original Codex and edits a **separate copy**, never the
+  original (a `[SAFETY]` guard enforces this).
+* **`scripts/lib/asar-edit.mjs`** surgically injects the script into `app.asar` (it appends to
+  the data section and rewrites the header, with no full repack).
 
 ## Direction policy
 
@@ -119,14 +120,17 @@ LTR.
 ## Repository layout
 
 ```
+Install-Codex-RTL.vbs           double-click launcher (no console window)
+Install-Codex-RTL.cmd           alternative launcher (delegates to the .vbs)
+install.ps1                     advanced one-line web bootstrap (pinned to a tag)
 src/codex-rtl-patch.js          injected renderer script (the RTL fix)
-scripts/Install-CodexRtl.ps1    build patched copy + shortcut + watcher
+scripts/Install-CodexRtlGui.ps1 graphical installer (WinForms, Hebrew)
+scripts/Install-CodexRtl.ps1    headless installer (advanced)
 scripts/Update-CodexRtl.ps1     force a re-patch now
-scripts/Uninstall-CodexRtl.ps1  remove the copy, shortcut, watcher, state
+scripts/Uninstall-CodexRtl.ps1  remove the copy, shortcuts, watcher, state
 scripts/Watch-CodexRtl.ps1      background watcher (auto-update, no admin)
-scripts/lib/codex-rtl-lib.ps1   shared logic: resolve, staging+swap, watcher
+scripts/lib/codex-rtl-lib.ps1   shared logic: resolve, staging+swap, status, watcher
 scripts/lib/asar-edit.mjs       surgical, dependency-free asar editor (Node)
-scripts/lib/asar.ps1            pure-PowerShell asar reader (utility)
 test/bidi-harness.html          visual bidi test cases
 ```
 
