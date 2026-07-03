@@ -90,6 +90,7 @@ function Get-StepHebrew([string]$key) {
         'preflight' { 'בודק את המערכת...' ; break }
         'copy'      { 'מעתיק את Codex (כ-1.6GB). זה עשוי לקחת כדקה...' ; break }
         'inject'    { 'מחיל את תיקון העברית (RTL)...' ; break }
+        'verify'    { 'מאמת שהתיקון הוחל כראוי...' ; break }
         'swap'      { 'מחליף קבצים...' ; break }
         'shortcut'  { 'יוצר קיצורי דרך...' ; break }
         'deferred'  { 'העדכון מוכן, ויוחל בפעם הבאה שתסגור/י את Codex (RTL).' ; break }
@@ -109,6 +110,9 @@ function Get-RtlHebrewError([string]$msg) {
         '^\[AV\]'      { 'הפעולה נחסמה כנראה על ידי האנטי-וירוס (Windows Defender). הכלי עורך רק עותק מקומי של Codex ואינו נוגע במקור. אפשר לאשר זמנית או להוסיף חריגה ולנסות שוב.' ; break }
         '^\[PACKAGE\]' { 'חבילת ההתקנה חסרה קבצים. ודא/י שחילצת את כל ה-ZIP, לא רק את קובץ ה-cmd, ונסה/י שוב.' ; break }
         '^\[SAFETY\]'  { 'הפעולה בוטלה מטעמי בטיחות (ניסיון לגעת בקובץ מחוץ לעותק ה-RTL). ההתקנה המקורית של Codex לא נפגעה.' ; break }
+        '^\[VERIFY\]'  { 'בדיקת התקינות שלאחר ההתקנה נכשלה: התיקון לא אומת בעותק. נסה/י "התקן מחדש". אם התקלה חוזרת, שלח/י את הלוג למפתח.' ; break }
+        '^\[STAGING\]' { 'בניית העותק הזמני נכשלה או נותרה חלקית. נסה/י "התקן מחדש"; אם התקלה חוזרת, פנה/י תיקיית %LOCALAPPDATA%\OpenAI ובדוק/י שאין תהליך שנועל אותה.' ; break }
+        '^\[INTEGRITY\]' { 'בדיקת ה-checksum של קובץ ההורדה נכשלה. ההורדה בוטלה ולא בוצע שום שינוי. נסה/י שוב; אם התקלה חוזרת, הורד/י מחדש מ-GitHub.' ; break }
         '^\[CANCEL\]'  { 'הפעולה בוטלה.' ; break }
         default        { "הפעולה נכשלה. הפרטים נשמרו בקובץ הלוג, אנא שלח/י אותו למפתח.`r`n`r`n$msg" }
     }
@@ -221,17 +225,18 @@ $btnSecondary = New-RtlButton 'התקן מחדש'
 $btnUninstall = New-RtlButton 'הסר התקנה'
 $btnDiag = New-RtlButton 'אבחון'
 $btnCopyLog = New-RtlButton 'העתק לוג'
+$btnBundle = New-RtlButton 'אסוף אבחון (ZIP)'
 $btnOpenLogs = New-RtlButton 'פתח תיקיית לוגים'
 $btnClose = New-RtlButton 'סגור'
-$buttons.Controls.AddRange(@($btnPrimary, $btnSecondary, $btnUninstall, $btnDiag, $btnCopyLog, $btnOpenLogs, $btnClose))
+$buttons.Controls.AddRange(@($btnPrimary, $btnSecondary, $btnUninstall, $btnDiag, $btnCopyLog, $btnBundle, $btnOpenLogs, $btnClose))
 
 # --- State / preflight: frame the UI per Get-CodexRtlStatus ------------------
 function Update-Buttons {
     if ($script:Sync.Busy) {
-        foreach ($b in @($btnPrimary, $btnSecondary, $btnUninstall, $btnDiag, $btnCopyLog, $btnOpenLogs, $btnClose)) { $b.Enabled = $false }
+        foreach ($b in @($btnPrimary, $btnSecondary, $btnUninstall, $btnDiag, $btnCopyLog, $btnBundle, $btnOpenLogs, $btnClose)) { $b.Enabled = $false }
         return
     }
-    foreach ($b in @($btnDiag, $btnCopyLog, $btnOpenLogs, $btnClose)) { $b.Enabled = $true }
+    foreach ($b in @($btnDiag, $btnCopyLog, $btnBundle, $btnOpenLogs, $btnClose)) { $b.Enabled = $true }
     $btnPrimary.Enabled = $true; $btnSecondary.Visible = $false; $btnUninstall.Visible = $false
     $st = $null; try { $st = Get-CodexRtlStatus } catch {}
     if (-not $st -or -not $st.CodexFound) {
@@ -457,6 +462,19 @@ $btnCopyLog.Add_Click({
             catch { [System.Windows.Forms.MessageBox]::Show('לא ניתן להעתיק את הלוג.', 'Codex RTL', 'OK', 'Warning') | Out-Null }
         }
         else { [System.Windows.Forms.MessageBox]::Show('עדיין אין קובץ לוג.', 'Codex RTL', 'OK', 'Information') | Out-Null }
+    })
+
+$btnBundle.Add_Click({
+        try {
+            Add-LogLine 'אוסף חבילת אבחון...'
+            $zip = Export-CodexRtlDiagnostics
+            if ($zip -and (Test-Path $zip)) {
+                Add-LogLine "נוצרה חבילת אבחון: $zip"
+                Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,`"$zip`""
+                [System.Windows.Forms.MessageBox]::Show("נוצר קובץ אבחון (ZIP) שאפשר לשלוח למפתח.`r`n`r`n$zip", 'Codex RTL', 'OK', 'Information') | Out-Null
+            }
+        }
+        catch { Add-LogLine "איסוף אבחון נכשל: $($_.Exception.Message)"; [System.Windows.Forms.MessageBox]::Show('לא ניתן היה לאסוף את חבילת האבחון.', 'Codex RTL', 'OK', 'Warning') | Out-Null }
     })
 
 $btnOpenLogs.Add_Click({

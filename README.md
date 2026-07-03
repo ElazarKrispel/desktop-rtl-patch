@@ -122,15 +122,19 @@ LTR.
 ```
 Install-Codex-RTL.vbs           double-click launcher (no console window)
 Install-Codex-RTL.cmd           alternative launcher (delegates to the .vbs)
+Codex-RTL-Tray.vbs              tray launcher (no console window)
 install.ps1                     advanced one-line web bootstrap (pinned to a tag)
-src/codex-rtl-patch.js          injected renderer script (the RTL fix)
+src/codex-rtl-patch.js          injected renderer script (the RTL fix, configurable)
 scripts/Install-CodexRtlGui.ps1 graphical installer (WinForms, Hebrew)
+scripts/CodexRtlTray.ps1        system-tray app (auto-update + menu, subsumes the watcher)
+scripts/CodexRtlSettings.ps1    settings dialog (WinForms, Hebrew): direction, surfaces, font
 scripts/Install-CodexRtl.ps1    headless installer (advanced)
 scripts/Update-CodexRtl.ps1     force a re-patch now
-scripts/Uninstall-CodexRtl.ps1  remove the copy, shortcuts, watcher, state
-scripts/Watch-CodexRtl.ps1      background watcher (auto-update, no admin)
-scripts/lib/codex-rtl-lib.ps1   shared logic: resolve, staging+swap, status, watcher
-scripts/lib/asar-edit.mjs       surgical, dependency-free asar editor (Node)
+scripts/Uninstall-CodexRtl.ps1  remove the copy, shortcuts, tray/watcher, state
+scripts/Watch-CodexRtl.ps1      background watcher (event-driven auto-update, no admin)
+scripts/Build-Release.ps1       package a checksummed release asset (maintainer helper)
+scripts/lib/codex-rtl-lib.ps1   shared logic: resolve, staging+swap, verify, config, watcher
+scripts/lib/asar-edit.mjs       surgical, dependency-free asar editor + verifier (Node)
 test/bidi-harness.html          visual bidi test cases
 ```
 

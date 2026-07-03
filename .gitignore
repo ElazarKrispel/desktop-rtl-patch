@@ -12,3 +12,6 @@ node_modules/
 *.asar
 *.png
 tmp/
+
+# release build output (Build-Release.ps1)
+dist/
