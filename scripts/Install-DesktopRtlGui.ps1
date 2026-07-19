@@ -347,10 +347,9 @@ function Start-Install {
                 Start-RtlInstallLog 'install' | Out-Null
                 Write-RtlUi 'מתחיל בהתקנה...'
                 Invoke-CodexRtlUpdate -Force
-                Write-RtlUi 'מגדיר עדכון אוטומטי...'
-                $watch = Copy-RtlBin -RepoRoot $repoRoot
-                Register-CodexRtlWatcher -WatchScript $watch
-                Start-CodexRtlWatcher -WatchScript $watch
+                Write-RtlUi 'מגדיר את סוכן הרקע המאוחד...'
+                # One unified agent (a single tray) for every installed app.
+                Install-RtlAgent -RepoRoot $repoRoot
                 $sync.Ok = $true
             }
             catch { $sync.Err = $_.Exception.Message }
@@ -393,7 +392,12 @@ function Start-Uninstall {
             try {
                 Start-RtlInstallLog 'uninstall' | Out-Null
                 Write-RtlUi 'מסיר את ההתקנה...'
-                Invoke-CodexRtlUninstall
+                $res = Invoke-CodexRtlUninstall
+                # Keep the unified agent while any app remains; tear it down only when
+                # none remain and cleanup was certain.
+                $remaining = @(Get-RtlInstalledApps)
+                if ($remaining.Count -gt 0) { Register-RtlAgent; Restart-RtlAgentTray }
+                elseif ($res.Certain) { Invoke-RtlAgentLastCleanup }
                 $sync.Ok = $true
             }
             catch { $sync.Err = $_.Exception.Message }
