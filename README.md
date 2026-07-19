@@ -27,7 +27,7 @@ It installs a **separate patched copy** per app; your original installs are neve
 
 1. ודאו שהאפליקציה שרוצים לתקן מותקנת: **Codex** מה-Microsoft Store (בגרסאות החדשות היא
    כבר נקראת **ChatGPT**), או **OpenCode**.
-2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.0.3.zip)**,
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.0.4.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
 3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית. בוחרים את האפליקציה
    בבורר שלמעלה (Codex או OpenCode), לוחצים **"התקן"** וממתינים כדקה.
@@ -49,7 +49,7 @@ It installs a **separate patched copy** per app; your original installs are neve
 
 ## Install (the easy way)
 
-1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.0.3.zip)** and extract it.
+1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.0.4.zip)** and extract it.
 2. Double-click **`Install-Desktop-RTL.vbs`** (or `Install-Desktop-RTL.cmd`). A small window opens.
 3. Pick the app at the top (Codex is the default), click **Install** and wait about a minute.
 
@@ -63,10 +63,10 @@ menu, and starts a background watcher that keeps the copy patched across app upd
 For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.3/install.ps1 | iex
+irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.4/install.ps1 | iex
 ```
 
-This downloads the same code, pinned to the `v2.0.3` tag (verified against a published
+This downloads the same code, pinned to the `v2.0.4` tag (verified against a published
 SHA-256 checksum), and opens the installer window. Running a remote script means trusting it;
 if you are unsure, prefer the ZIP download above (it is exactly the same code, and you can
 read it first).
@@ -75,8 +75,8 @@ Prefer no window at all? Add `RTL_SILENT` (and optionally `RTL_APP`) on the same
 whole install runs headless in the terminal:
 
 ```powershell
-$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.3/install.ps1 | iex
-$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.3/install.ps1 | iex
+$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.4/install.ps1 | iex
+$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.4/install.ps1 | iex
 ```
 
 Headless CLI (both take `-App codex|opencode`, default codex):

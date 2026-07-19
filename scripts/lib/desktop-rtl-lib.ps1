@@ -20,7 +20,7 @@
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.0.3'
+$script:PatchVersion  = '2.0.4'
 $script:SchemaVersion = 2
 $script:StateDir   = Join-Path $env:LOCALAPPDATA 'CodexRtlPatch'
 $script:BinDir     = Join-Path $script:StateDir 'bin'
@@ -1191,8 +1191,12 @@ function Invoke-CodexRtlUpdate {
         if (-not $patchJs) { throw 'desktop-rtl-patch.js not found.' }
 
         $current = if ($state) { $state.sourceSignature } else { $null }
-        if (-not $Force -and $current -eq $src.Signature -and (Test-Path $copyExe)) {
-            Write-RtlLog "Up to date ($app v$($src.Version))."
+        # "Up to date" only if the APP version AND the tool (patch) version both match what
+        # is installed: a tool self-update leaves the app version unchanged but ships a new
+        # payload / shortcut logic, so it must NOT early-return - it re-patches on the next pass.
+        $patchCurrent = ($state -and $state.patchVersion -eq $script:PatchVersion)
+        if (-not $Force -and $current -eq $src.Signature -and (Test-Path $copyExe) -and $patchCurrent) {
+            Write-RtlLog "Up to date ($app v$($src.Version), patch $($script:PatchVersion))."
             # Apply any settings change made while the RTL copy was open (now that a
             # pass is running and it may be closed).
             try { Sync-RtlConfigAsset -AppId $p.Id -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null } catch { Write-RtlLog "config sync error: $($_.Exception.Message)" }
@@ -1212,8 +1216,12 @@ function Invoke-CodexRtlUpdate {
         $stagingExe   = Join-Path $stagingApp $p.ExeLeaf
         $stagingSig   = Join-Path $script:Staging '.codexrtl-sig'
         $buildingFlag = Join-Path $script:Staging '.codexrtl-building'
+        # The staging signature binds BOTH the app version and the tool (patch) version, so a
+        # tool self-update (same app, new payload/config) invalidates the warm baseline and
+        # forces a rebuild + re-inject - not just an app version change.
+        $buildSig     = "$($src.Signature)|patch=$($script:PatchVersion)"
         $stagingReady = (Test-Path $stagingExe) -and
-                        (Test-Path $stagingSig) -and ((Get-Content $stagingSig -Raw).Trim() -eq $src.Signature) -and
+                        (Test-Path $stagingSig) -and ((Get-Content $stagingSig -Raw).Trim() -eq $buildSig) -and
                         (-not (Test-Path $buildingFlag))
         # A matching source signature is NOT enough: the staging may hold an older
         # PATCH (e.g. after a tool upgrade the reseeded baseline carries the previous
@@ -1281,7 +1289,7 @@ function Invoke-CodexRtlUpdate {
             # BEFORE we record the signature that would let a later run skip rebuild.
             Set-RtlStep 'verify' 82 $true
             Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
-            Set-Content -LiteralPath $stagingSig -Value $src.Signature -Encoding UTF8 -NoNewline
+            Set-Content -LiteralPath $stagingSig -Value $buildSig -Encoding UTF8 -NoNewline
             Remove-Item -LiteralPath $buildingFlag -Force -ErrorAction SilentlyContinue
             Write-RtlLog 'Staging build complete and verified.'
         } else {
