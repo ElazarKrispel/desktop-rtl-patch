@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="Desktop RTL Patch: native Hebrew and Arabic support for AI desktop apps" width="100%">
+</p>
+
 # desktop-rtl-patch
 
 **Hebrew / Arabic (right-to-left) support for AI desktop apps on Windows**, with a friendly
