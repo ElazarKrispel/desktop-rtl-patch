@@ -4,6 +4,11 @@
 #   irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.0/install.ps1 | iex
 #
 # It downloads this exact tagged release, then opens the graphical installer.
+# Fully headless (no window; piping to iex cannot take parameters, so options are
+# passed via environment variables set on the same line):
+#   $env:RTL_SILENT='1'; irm .../install.ps1 | iex                        # install for Codex
+#   $env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm .../install.ps1 | iex
+#
 # No administrator rights. Running a remote script requires trusting it; this is
 # pinned to the v2.0.0 tag and is the same code as the ZIP download.
 
@@ -46,10 +51,20 @@ try {
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
 
 $root = Get-ChildItem -Directory -Path $tmp | Select-Object -First 1
-$gui = Join-Path $root.FullName 'scripts\Install-DesktopRtlGui.ps1'
-if (-not (Test-Path $gui)) { throw 'Installer script not found in the download.' }
-
-Write-Host 'Opening the installer window...' -ForegroundColor Cyan
 $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-Start-Process -FilePath $psExe -WindowStyle Hidden -ArgumentList @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', $gui)
+
+if ($env:RTL_SILENT) {
+    # Headless: run the CLI installer in THIS console and show its output.
+    $cli = Join-Path $root.FullName 'scripts\Install-DesktopRtl.ps1'
+    if (-not (Test-Path $cli)) { throw 'Installer script not found in the download.' }
+    $app = if ($env:RTL_APP) { $env:RTL_APP } else { 'codex' }
+    Write-Host "Installing (headless) for '$app'..." -ForegroundColor Cyan
+    & $psExe -NoProfile -ExecutionPolicy Bypass -File $cli -App $app
+    if ($LASTEXITCODE -ne 0) { throw "Headless install failed (exit $LASTEXITCODE). See the log output above." }
+} else {
+    $gui = Join-Path $root.FullName 'scripts\Install-DesktopRtlGui.ps1'
+    if (-not (Test-Path $gui)) { throw 'Installer script not found in the download.' }
+    Write-Host 'Opening the installer window...' -ForegroundColor Cyan
+    Start-Process -FilePath $psExe -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', $gui)
+}

@@ -71,6 +71,14 @@ SHA-256 checksum), and opens the installer window. Running a remote script means
 if you are unsure, prefer the ZIP download above (it is exactly the same code, and you can
 read it first).
 
+Prefer no window at all? Add `RTL_SILENT` (and optionally `RTL_APP`) on the same line and the
+whole install runs headless in the terminal:
+
+```powershell
+$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.0/install.ps1 | iex
+$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.0/install.ps1 | iex
+```
+
 Headless CLI (both take `-App codex|opencode`, default codex):
 
 ```powershell
