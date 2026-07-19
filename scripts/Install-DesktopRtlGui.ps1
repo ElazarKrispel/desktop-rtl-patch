@@ -166,14 +166,14 @@ $pickCombo = New-Object System.Windows.Forms.ComboBox
 $pickCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $pickCombo.Width = 160
 $pickCombo.Margin = New-Object System.Windows.Forms.Padding(3, 4, 3, 3)
-[void]$pickCombo.Items.Add('Codex')
-[void]$pickCombo.Items.Add('OpenCode')
+# ComboBox item index -> app id (single source of truth). Combo labels derive from the
+# profiles' DisplayName so adding an app is a one-line change here, not a label edit too.
+$script:AppIds = @('codex', 'opencode', 'traycer')
+foreach ($id in $script:AppIds) { [void]$pickCombo.Items.Add((Get-RtlProfile $id).DisplayName) }
 $pickCombo.SelectedIndex = 0
 $pickPanel.Controls.AddRange(@($pickLabel, $pickCombo))
 $root.Controls.Add($pickPanel, 0, 0)
 $script:AppCombo = $pickCombo
-# ComboBox item index -> app id.
-$script:AppIds = @('codex', 'opencode')
 
 $title = New-Object System.Windows.Forms.Label
 $title.Text = 'תמיכת עברית (RTL) ל-Codex'
@@ -550,8 +550,9 @@ $form.Add_Shown({ Select-RtlApp $script:AppIds[$script:AppCombo.SelectedIndex] }
 $form.Add_Activated({ if (-not $script:Sync.Busy) { try { Update-Buttons } catch {} } })
 
 if ($SelfTest) {
-    # Construct + run preflight once for BOTH apps, but do not block on ShowDialog.
-    foreach ($id in @('codex', 'opencode')) {
+    # Construct + run preflight once for EVERY app, but do not block on ShowDialog.
+    if ($script:AppCombo.Items.Count -ne $script:AppIds.Count) { throw "SelfTest: picker has $($script:AppCombo.Items.Count) items but $($script:AppIds.Count) app ids." }
+    foreach ($id in $script:AppIds) {
         Select-RtlApp $id
         Write-Host "SelfTest OK ($id): state = $((Get-CodexRtlStatus).State); label = [$($status.Text)]"
     }

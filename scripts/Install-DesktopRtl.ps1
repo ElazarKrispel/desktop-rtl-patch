@@ -2,7 +2,7 @@
 .SYNOPSIS
     Install the Desktop RTL patch (patched copy + auto-update watcher), headless.
 .DESCRIPTION
-    Builds a patched COPY of the selected app (-App codex|opencode; the original
+    Builds a patched COPY of the selected app (-App codex|opencode|traycer; the original
     install is only read, never modified), creates "(RTL)" Start-menu and Desktop
     shortcuts, and registers a per-user logon watcher that re-applies the patch
     whenever the app updates - safely, while the copy is closed, with no
@@ -15,7 +15,7 @@
     Not used by the end-user GUI (which requires the bundled Node).
 #>
 [CmdletBinding()]
-param([ValidateSet('codex','opencode')][string]$App = 'codex', [switch]$NoWatcher, [switch]$AllowExternalNodeFallback)
+param([ValidateSet('codex','opencode','traycer')][string]$App = 'codex', [switch]$NoWatcher, [switch]$AllowExternalNodeFallback)
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
