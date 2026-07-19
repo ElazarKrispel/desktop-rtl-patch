@@ -35,7 +35,10 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 $verified = $false
 try {
     Invoke-WebRequest -Uri $assetZip -OutFile $zip -UseBasicParsing
+    # GitHub serves the .txt asset as octet-stream, so .Content arrives as byte[].
     $sums = (Invoke-WebRequest -Uri $sumsUrl -UseBasicParsing).Content
+    if ($sums -is [byte[]]) { $sums = [Text.Encoding]::ASCII.GetString($sums) }
+    $sums = [string]$sums
     $have = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
     if ($sums -and ($sums.ToLower() -match [regex]::Escape($have))) {
         $verified = $true
