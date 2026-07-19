@@ -20,7 +20,7 @@
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.0.2'
+$script:PatchVersion  = '2.0.3'
 $script:SchemaVersion = 2
 $script:StateDir   = Join-Path $env:LOCALAPPDATA 'CodexRtlPatch'
 $script:BinDir     = Join-Path $script:StateDir 'bin'
@@ -948,9 +948,18 @@ function New-RtlShortcut {
     $exe  = Join-Path $script:CopyRoot $p.ExeRelPath
     $work = Join-RtlTree $script:CopyRoot $p.AppSubdir
     $ico  = if ($p.ShortcutIconRel) { Join-Path $work $p.ShortcutIconRel } else { $null }
-    $haveIco = ($ico -and (Test-Path $ico))
-    $iconLoc = if ($haveIco) { "$ico,0" } else { "$exe,0" }
-    $iconRes = if ($haveIco) { "$ico,0" } else { $null }
+    if ($ico -and (Test-Path $ico)) {
+        # Branded .ico in the copy (codex knot): use it for the shortcut AND the taskbar.
+        $iconLoc = "$ico,0"; $iconRes = "$ico,0"
+    } else {
+        # No branded .ico (e.g. OpenCode): use the SOURCE app's own exe icon. It renders
+        # reliably on a shortcut and matches the original; the COPY's exe icon can fail to
+        # extract via a .lnk on some Electron builds (shows a blank page). Icon is display
+        # only - TargetPath still launches the copy. Fall back to the copy exe if unresolved.
+        $iconExe = $exe
+        try { $s = Resolve-RtlSource; $se = Join-Path $s.AppDir $p.ExeLeaf; if (Test-Path $se) { $iconExe = $se } } catch {}
+        $iconLoc = "$iconExe,0"; $iconRes = $null
+    }
     $ws = New-Object -ComObject WScript.Shell
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {
         try {
