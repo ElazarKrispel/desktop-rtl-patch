@@ -21,7 +21,7 @@ $zipPath  = Join-Path $dist $zipName
 $sumsPath = Join-Path $dist 'SHA256SUMS.txt'
 
 # Only ship what the installer needs; never the repo plumbing or build artifacts.
-$include = @('scripts', 'src', 'test', 'install.ps1', 'Install-Desktop-RTL.vbs', 'Install-Desktop-RTL.cmd',
+$include = @('scripts', 'src', 'test', 'assets', 'install.ps1', 'Install-Desktop-RTL.vbs', 'Install-Desktop-RTL.cmd',
              'Desktop-RTL-Tray.vbs', 'Desktop-RTL-Settings.vbs', 'README.md', 'LICENSE')
 
 if (Test-Path $stageTop) { Remove-Item -LiteralPath $stageTop -Recurse -Force }

@@ -15,3 +15,6 @@ tmp/
 
 # release build output (Build-Release.ps1)
 dist/
+
+# local media (never publish)
+video recordings and screenshots/

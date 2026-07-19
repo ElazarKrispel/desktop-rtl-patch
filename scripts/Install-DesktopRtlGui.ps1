@@ -43,8 +43,8 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
 
 # Give the process a distinct AppUserModelID so its taskbar button uses the window's
-# own icon (Codex) and its own label, instead of grouping under (and showing the icon
-# of) PowerShell. Must be set before the window is created.
+# own (branded) icon and its own label, instead of grouping under (and showing the
+# icon of) PowerShell. Must be set before the window is created.
 try {
     Add-Type -Namespace CodexRtl -Name TaskbarId -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
@@ -114,7 +114,7 @@ function Get-RtlHebrewError([string]$msg) {
         '^\[PACKAGE\]' { 'חבילת ההתקנה חסרה קבצים. ודא/י שחילצת את כל ה-ZIP, לא רק את קובץ ה-cmd, ונסה/י שוב.' ; break }
         '^\[SAFETY\]'  { "הפעולה בוטלה מטעמי בטיחות (ניסיון לגעת בקובץ מחוץ לעותק ה-RTL). ההתקנה המקורית של $appName לא נפגעה." ; break }
         '^\[VERIFY\]'  { 'בדיקת התקינות שלאחר ההתקנה נכשלה: התיקון לא אומת בעותק. נסה/י "התקן מחדש". אם התקלה חוזרת, שלח/י את הלוג למפתח.' ; break }
-        '^\[STAGING\]' { 'בניית העותק הזמני נכשלה או נותרה חלקית. נסה/י "התקן מחדש"; אם התקלה חוזרת, פנה/י תיקיית %LOCALAPPDATA%\OpenAI ובדוק/י שאין תהליך שנועל אותה.' ; break }
+        '^\[STAGING\]' { 'בניית העותק הזמני נכשלה או נותרה חלקית. נסה/י "התקן מחדש"; אם התקלה חוזרת, ודא/י שאף תוכנה (אנטי-וירוס, סייר הקבצים) לא נועלת את תיקיית ההתקנה, ונסה/י שוב.' ; break }
         '^\[INTEGRITY\]' { 'בדיקת ה-checksum של קובץ ההורדה נכשלה. ההורדה בוטלה ולא בוצע שום שינוי. נסה/י שוב; אם התקלה חוזרת, הורד/י מחדש מ-GitHub.' ; break }
         '^\[CANCEL\]'  { 'הפעולה בוטלה.' ; break }
         default        { "הפעולה נכשלה. הפרטים נשמרו בקובץ הלוג, אנא שלח/י אותו למפתח.`r`n`r`n$msg" }
@@ -137,11 +137,16 @@ $form.MinimumSize = New-Object System.Drawing.Size(560, 460)
 $form.ClientSize  = New-Object System.Drawing.Size(580, 470)
 $form.MaximizeBox = $false
 $form.FormBorderStyle = 'Sizable'
-# Use the selected app's own icon for the installer window (no separate branded icon).
-# ExtractAssociatedIcon needs an Icon object, so this is the one place we extract; the
-# shortcut itself just points IconLocation at the exe.
+# The installer carries its own branded icon (assets\desktop-rtl.ico) for the window
+# and taskbar. Fallback: the selected app's exe icon (ExtractAssociatedIcon needs an
+# Icon object; the shortcut itself just points IconLocation at the exe).
+$script:BrandIconPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'assets\desktop-rtl.ico'
 function Set-RtlFormIcon {
     try {
+        if (Test-Path $script:BrandIconPath) {
+            $form.Icon = New-Object System.Drawing.Icon($script:BrandIconPath)
+            return
+        }
         $p = $script:ActiveProfile
         $iconExe = $null
         $cands = @((Join-Path $script:CopyRoot $p.ExeRelPath))
