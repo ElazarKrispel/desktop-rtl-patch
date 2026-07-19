@@ -1,11 +1,12 @@
 <#
 .SYNOPSIS
-    Manually re-apply the Desktop RTL patch from the current Codex version.
+    Manually re-apply the Desktop RTL patch from the currently installed app version.
 .DESCRIPTION
-    Normally the watcher does this automatically. Run this to force it now.
-    Builds to staging and swaps in place only while Codex (RTL) is closed.
+    Normally the watcher does this automatically. Run this to force it now
+    (-App codex|opencode). Builds to staging and swaps in place only while the
+    patched "(RTL)" copy is closed.
 .PARAMETER Force
-    Rebuild even if the Codex version has not changed.
+    Rebuild even if the app version has not changed.
 #>
 [CmdletBinding()]
 param([ValidateSet('codex','opencode')][string]$App = 'codex', [switch]$Force, [switch]$AllowExternalNodeFallback)

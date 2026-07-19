@@ -1,4 +1,4 @@
-' Desktop-RTL-Tray.vbs - launch the Codex RTL tray app with no console window.
+' Desktop-RTL-Tray.vbs - launch the RTL tray app with no console window.
 ' Self-locating: runs DesktopRtlTray.ps1 from the same folder as this script, so the
 ' same launcher works both in the repo and after deployment to the per-user bin.
 Option Explicit

@@ -1,4 +1,4 @@
-' Desktop-RTL-Settings.vbs - open the Codex RTL settings dialog with no console window.
+' Desktop-RTL-Settings.vbs - open the RTL settings dialog with no console window.
 ' Self-locating: runs DesktopRtlSettings.ps1 from the same folder (bin) or scripts\.
 Option Explicit
 Dim sh, fso, scriptDir, ps1, cmd

@@ -86,14 +86,15 @@ $script:Job = $null
 
 # --- Hebrew helpers ----------------------------------------------------------
 function Get-StepHebrew([string]$key) {
+    $appName = try { $script:ActiveProfile.DisplayName } catch { 'האפליקציה' }
     switch ($key) {
         'preflight' { 'בודק את המערכת...' ; break }
-        'copy'      { 'מעתיק את Codex (כ-1.6GB). זה עשוי לקחת כדקה...' ; break }
+        'copy'      { "מעתיק את $appName. זה עשוי לקחת כדקה..." ; break }
         'inject'    { 'מחיל את תיקון העברית (RTL)...' ; break }
         'verify'    { 'מאמת שהתיקון הוחל כראוי...' ; break }
         'swap'      { 'מחליף קבצים...' ; break }
         'shortcut'  { 'יוצר קיצורי דרך...' ; break }
-        'deferred'  { 'העדכון מוכן, ויוחל בפעם הבאה שתסגור/י את Codex (RTL).' ; break }
+        'deferred'  { "העדכון מוכן, ויוחל בפעם הבאה שתסגור/י את $appName (RTL)." ; break }
         'done'      { 'הושלם!' ; break }
         default     { '' }
     }
@@ -108,10 +109,10 @@ function Get-RtlHebrewError([string]$msg) {
         '^\[LAYOUT\]'  { "$appName זוהה אך המבנה הפנימי שלו אינו כמצופה. ייתכן שהאפליקציה עודכנה ושהכלי צריך עדכון. עדכן/י את הכלי או פנה/י למפתח." ; break }
         '^\[FUSE\]'    { "בגרסה זו של $appName אימות ה-asar מופעל, ולכן שיטת ההעתקה אינה יכולה להחיל את התיקון. אנא דווח/י למפתח." ; break }
         '^\[DISK\]'    { 'אין מספיק מקום פנוי בדיסק. פנה/י מספר GB ונסה/י שוב.' ; break }
-        '^\[LOCK\]'    { 'חלק מהקבצים נעולים (אולי אנטי-וירוס, סייר הקבצים, או ש-Codex (RTL) פתוח). סגור/י אותם ונסה/י שוב.' ; break }
-        '^\[AV\]'      { 'הפעולה נחסמה כנראה על ידי האנטי-וירוס (Windows Defender). הכלי עורך רק עותק מקומי של Codex ואינו נוגע במקור. אפשר לאשר זמנית או להוסיף חריגה ולנסות שוב.' ; break }
+        '^\[LOCK\]'    { "חלק מהקבצים נעולים (אולי אנטי-וירוס, סייר הקבצים, או ש-$appName (RTL) פתוח). סגור/י אותם ונסה/י שוב." ; break }
+        '^\[AV\]'      { "הפעולה נחסמה כנראה על ידי האנטי-וירוס (Windows Defender). הכלי עורך רק עותק מקומי של $appName ואינו נוגע במקור. אפשר לאשר זמנית או להוסיף חריגה ולנסות שוב." ; break }
         '^\[PACKAGE\]' { 'חבילת ההתקנה חסרה קבצים. ודא/י שחילצת את כל ה-ZIP, לא רק את קובץ ה-cmd, ונסה/י שוב.' ; break }
-        '^\[SAFETY\]'  { 'הפעולה בוטלה מטעמי בטיחות (ניסיון לגעת בקובץ מחוץ לעותק ה-RTL). ההתקנה המקורית של Codex לא נפגעה.' ; break }
+        '^\[SAFETY\]'  { "הפעולה בוטלה מטעמי בטיחות (ניסיון לגעת בקובץ מחוץ לעותק ה-RTL). ההתקנה המקורית של $appName לא נפגעה." ; break }
         '^\[VERIFY\]'  { 'בדיקת התקינות שלאחר ההתקנה נכשלה: התיקון לא אומת בעותק. נסה/י "התקן מחדש". אם התקלה חוזרת, שלח/י את הלוג למפתח.' ; break }
         '^\[STAGING\]' { 'בניית העותק הזמני נכשלה או נותרה חלקית. נסה/י "התקן מחדש"; אם התקלה חוזרת, פנה/י תיקיית %LOCALAPPDATA%\OpenAI ובדוק/י שאין תהליך שנועל אותה.' ; break }
         '^\[INTEGRITY\]' { 'בדיקת ה-checksum של קובץ ההורדה נכשלה. ההורדה בוטלה ולא בוצע שום שינוי. נסה/י שוב; אם התקלה חוזרת, הורד/י מחדש מ-GitHub.' ; break }
@@ -494,13 +495,14 @@ $btnDiag.Add_Click({
         $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
         try {
             $d = Invoke-CodexRtlDiagnose
+            $diagApp = $script:ActiveProfile.DisplayName
             $lines = @(
                 '--- אבחון ---',
-                "Codex מותקן: $(if($d.CodexFound){'כן'}else{'לא'})  (גרסה $($d.SourceVersion))",
+                "$diagApp מותקן: $(if($d.CodexFound){'כן'}else{'לא'})  (גרסה $($d.SourceVersion))",
                 "מבנה תקין: $(if($d.LayoutValid){'כן'}else{'לא - '+$d.LayoutError})",
                 "Node מובנה: $(if($d.NodeExists){'נמצא'}else{'חסר'})",
                 "מקום פנוי: $($d.FreeGB)GB  (נדרש ~$($d.SourceSizeGB)GB, מספיק: $(if($d.EnoughSpace){'כן'}else{'לא'}))",
-                "RTL מותקן: $(if($d.RtlInstalled){'כן'}else{'לא'})  | RTL רץ: $(if($d.RtlRunning){'כן'}else{'לא'})  | Codex מקורי רץ: $(if($d.OriginalRunning){'כן'}else{'לא'})",
+                "RTL מותקן: $(if($d.RtlInstalled){'כן'}else{'לא'})  | RTL רץ: $(if($d.RtlRunning){'כן'}else{'לא'})  | $diagApp מקורי רץ: $(if($d.OriginalRunning){'כן'}else{'לא'})",
                 "הפרטים המלאים נשמרו בקובץ הלוג."
             )
             $script:LogBox.Clear()
