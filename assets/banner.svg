@@ -73,10 +73,10 @@
 
   <!-- supported apps -->
   <g font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#7f7aa8">
-    <text x="560" y="600">Codex / ChatGPT</text>
-    <text x="772" y="600">&#183;</text>
-    <text x="796" y="600">OpenCode</text>
-    <text x="938" y="600">&#183;</text>
-    <text x="962" y="600">More apps soon</text>
+    <text x="608" y="600">Codex / ChatGPT</text>
+    <text x="820" y="600">&#183;</text>
+    <text x="844" y="600">OpenCode</text>
+    <text x="986" y="600">&#183;</text>
+    <text x="1010" y="600">Traycer</text>
   </g>
 </svg>
