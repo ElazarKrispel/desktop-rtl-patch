@@ -14,9 +14,13 @@
 #
 # No elevation required: everything writes under the user profile.
 # This file is ASCII-only; the Hebrew shortcut label is built from code points so it
-# is safe regardless of how Windows PowerShell 5.1 decodes the file.
+# is safe regardless of how Windows PowerShell 5.1 decodes the file. The Hebrew error
+# messages live in the sibling desktop-rtl-errors.ps1 (UTF-8 BOM), dot-sourced below so
+# every consumer (GUI, tray, settings, CLI) shares one Get-RtlHebrewError.
+$script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
+if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.0.0'
+$script:PatchVersion  = '2.0.1'
 $script:SchemaVersion = 2
 $script:StateDir   = Join-Path $env:LOCALAPPDATA 'CodexRtlPatch'
 $script:BinDir     = Join-Path $script:StateDir 'bin'
@@ -197,6 +201,15 @@ function Get-RtlProfile {
                 ExeRelPath        = 'app\ChatGPT.exe'
                 AsarRelPath       = 'app\resources\app.asar'
                 ProcessName       = @('ChatGPT', 'Codex')
+                # The MSIX shell logo (the crisp knot the Store/taskbar shows) lives at the
+                # PACKAGE ROOT (sibling of app\), which the copy does not include; the exe's
+                # own embedded icon is a low-res legacy blossom. Build a branded .ico from
+                # these pre-sized PNGs so the "(RTL)" shortcut matches the original.
+                BrandIcon         = [pscustomobject]@{
+                    RelDir  = 'assets'
+                    Pattern = 'Square44x44Logo.targetsize-{0}_altform-unplated.png'
+                    Sizes   = @(16, 24, 32, 48, 64, 256)
+                }
                 NodeStrategy      = 'bundled'      # cua_node next to the asar
                 NodeRelPath       = 'app\resources\cua_node\bin\node.exe'
                 WatcherRunName    = 'CodexRtlPatchWatcher'
@@ -243,6 +256,7 @@ function Get-RtlProfile {
                 ExeRelPath        = 'OpenCode.exe'
                 AsarRelPath       = 'resources\app.asar'
                 ProcessName       = @('OpenCode')
+                BrandIcon         = $null           # exe embeds its own real icon; use exe,0
                 NodeStrategy      = 'electron-as-node'   # run the copied exe with ELECTRON_RUN_AS_NODE=1
                 NodeRelPath       = $null
                 WatcherRunName    = 'OpenCodeRtlPatchWatcher'
@@ -877,21 +891,81 @@ function Invoke-AtomicSwap {
     }
 }
 
+# Pack pre-sized PNGs into a multi-size .ico (PNG-compressed frames, which the
+# Windows shell renders at any size). Dependency-free: PNG dimensions are read from
+# the IHDR chunk, so System.Drawing is never loaded. Frames >=256 encode as 0.
+function Write-RtlIco {
+    param([string[]]$PngPaths, [string]$OutPath)
+    $imgs = @()
+    foreach ($pp in $PngPaths) {
+        $bytes = [System.IO.File]::ReadAllBytes($pp)
+        # PNG: 8-byte sig, then IHDR (len+"IHDR"), so width@16, height@20 (big-endian).
+        $w = ($bytes[16] -shl 24) -bor ($bytes[17] -shl 16) -bor ($bytes[18] -shl 8) -bor $bytes[19]
+        $h = ($bytes[20] -shl 24) -bor ($bytes[21] -shl 16) -bor ($bytes[22] -shl 8) -bor $bytes[23]
+        $imgs += [pscustomobject]@{ W = $w; H = $h; Bytes = $bytes }
+    }
+    $ms = New-Object System.IO.MemoryStream
+    $bw = New-Object System.IO.BinaryWriter($ms)
+    $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]$imgs.Count)  # ICONDIR
+    $offset = 6 + 16 * $imgs.Count
+    foreach ($e in $imgs) {
+        $bw.Write([byte]$(if ($e.W -ge 256) { 0 } else { $e.W }))
+        $bw.Write([byte]$(if ($e.H -ge 256) { 0 } else { $e.H }))
+        $bw.Write([byte]0); $bw.Write([byte]0)              # colors, reserved
+        $bw.Write([uint16]1); $bw.Write([uint16]32)         # planes, bpp
+        $bw.Write([uint32]$e.Bytes.Length); $bw.Write([uint32]$offset)
+        $offset += $e.Bytes.Length
+    }
+    foreach ($e in $imgs) { $bw.Write($e.Bytes) }
+    $bw.Flush()
+    [System.IO.File]::WriteAllBytes($OutPath, $ms.ToArray())
+    $ms.Dispose()
+}
+
+# Build a branded .ico for the shortcut from the SOURCE app's shell-logo assets, so the
+# "(RTL)" shortcut/taskbar icon matches the original app instead of the exe's low-res
+# embedded icon. Returns the .ico path under StateDir (removed on uninstall), or $null
+# to fall back to "exe,0". Profile-driven: only codex defines BrandIcon.
+function New-RtlAppIco {
+    $spec = $script:ActiveProfile.BrandIcon
+    if (-not $spec) { return $null }
+    try {
+        $src  = Resolve-RtlSource
+        $root = Split-Path $src.AppDir -Parent       # package root; assets\ is a sibling of app\
+        $dir  = Join-Path $root $spec.RelDir
+        if (-not (Test-Path $dir)) { return $null }
+        $pngs = @()
+        foreach ($sz in $spec.Sizes) {
+            $f = Join-Path $dir ($spec.Pattern -f $sz)
+            if (Test-Path $f) { $pngs += $f }
+        }
+        if ($pngs.Count -eq 0) { return $null }
+        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+        $ico = Join-Path $script:StateDir 'app-icon.ico'
+        Write-RtlIco -PngPaths $pngs -OutPath $ico
+        return $ico
+    } catch {
+        Write-RtlLog "brand icon build skipped (falling back to exe icon): $($_.Exception.Message)"
+        return $null
+    }
+}
+
 function New-RtlShortcut {
-    # Differentiate from the regular app by NAME only ("<App> (RTL)"), keeping the
-    # app's ORIGINAL icon (IconLocation points at the copy's exe, so Windows resolves
-    # the icon itself - no extraction). Creates a Start-menu and a Desktop shortcut,
-    # and removes any legacy-named shortcuts.
+    # Differentiate from the regular app by NAME only ("<App> (RTL)"). Prefer a branded
+    # .ico built from the source app's shell logo (New-RtlAppIco); fall back to the copy's
+    # exe icon. Creates a Start-menu and a Desktop shortcut, removes legacy-named ones.
     $p    = $script:ActiveProfile
     $exe  = Join-Path $script:CopyRoot $p.ExeRelPath
     $work = Join-RtlTree $script:CopyRoot $p.AppSubdir
+    $ico  = New-RtlAppIco
+    $iconLoc = if ($ico) { "$ico,0" } else { "$exe,0" }
     $ws = New-Object -ComObject WScript.Shell
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {
         try {
             $sc = $ws.CreateShortcut($lnk)
             $sc.TargetPath       = $exe
             $sc.WorkingDirectory = $work
-            $sc.IconLocation     = "$exe,0"   # original app icon
+            $sc.IconLocation     = $iconLoc
             $sc.Description       = $p.ShortcutDesc
             $sc.Save()
         } catch {
@@ -1409,6 +1483,7 @@ function Copy-RtlBin {
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
     $items = @(
         @{ src = 'scripts\lib\desktop-rtl-lib.ps1'; dst = 'desktop-rtl-lib.ps1';   req = $true },
+        @{ src = 'scripts\lib\desktop-rtl-errors.ps1'; dst = 'desktop-rtl-errors.ps1'; req = $false },
         @{ src = 'scripts\lib\asar-edit.mjs';     dst = 'asar-edit.mjs';        req = $true },
         @{ src = 'src\desktop-rtl-patch.js';        dst = 'desktop-rtl-patch.js';   req = $true },
         @{ src = 'scripts\Watch-DesktopRtl.ps1';    dst = 'Watch-DesktopRtl.ps1';   req = $true },
@@ -1528,7 +1603,9 @@ function Invoke-CodexRtlUninstall {
         foreach ($lnk in $script:ShortcutPaths) {
             if (Test-Path $lnk) { try { Remove-Item -LiteralPath $lnk -Force; Write-RtlLog "removed $lnk" } catch {} }
         }
-        if (Test-Path $script:StateFile) { Remove-Item -LiteralPath $script:StateFile -Force }
+        foreach ($f in @($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, (Join-Path $script:StateDir 'app-icon.ico'))) {
+            if ($f -and (Test-Path $f)) { try { Remove-Item -LiteralPath $f -Force } catch {} }
+        }
         if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-Item -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch {} }
         Write-RtlLog 'Uninstall complete.'
     } finally { Exit-RtlLock }
