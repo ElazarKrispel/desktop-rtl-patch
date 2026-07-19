@@ -1120,6 +1120,17 @@ function Invoke-CodexRtlUpdate {
         $stagingReady = (Test-Path $stagingExe) -and
                         (Test-Path $stagingSig) -and ((Get-Content $stagingSig -Raw).Trim() -eq $src.Signature) -and
                         (-not (Test-Path $buildingFlag))
+        # A matching source signature is NOT enough: the staging may hold an older
+        # PATCH (e.g. after a tool upgrade the reseeded baseline carries the previous
+        # payload). Re-verify it; on any failure fall through to a rebuild.
+        if ($stagingReady) {
+            try { Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null }
+            catch {
+                Write-RtlLog "Staging matches the source version but failed verification ($($_.Exception.Message)); rebuilding it."
+                Remove-Item -LiteralPath $stagingSig -Force -ErrorAction SilentlyContinue
+                $stagingReady = $false
+            }
+        }
         if (-not $stagingReady) {
             $torn = Test-Path $buildingFlag
             $warm = (Test-Path $stagingExe) -and (-not $torn)
