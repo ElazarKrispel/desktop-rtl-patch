@@ -1,5 +1,5 @@
-﻿# CodexRtlSettings.ps1
-# Settings dialog for the Codex RTL patch (WinForms, Hebrew, RTL). Reads/writes
+﻿# DesktopRtlSettings.ps1
+# Settings dialog for the Desktop RTL patch (WinForms, Hebrew, RTL). Reads/writes
 # config.json via the shared library and applies changes to the live copy with
 # Update-CodexRtlConfigAsset (no full rebuild). No admin.
 #
@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 # The lib sits next to us in bin, or under scripts\lib in the repo.
 $here = $PSScriptRoot
 $script:LibPath = $null
-foreach ($c in @((Join-Path $here 'codex-rtl-lib.ps1'), (Join-Path $here 'lib\codex-rtl-lib.ps1'))) {
+foreach ($c in @((Join-Path $here 'desktop-rtl-lib.ps1'), (Join-Path $here 'lib\desktop-rtl-lib.ps1'))) {
     if (Test-Path $c) { $script:LibPath = $c; break }
 }
 
@@ -50,7 +50,7 @@ public static extern int SetCurrentProcessExplicitAppUserModelID(string AppID);
 } catch {}
 
 if (-not $script:LibPath -or -not (Test-Path $script:LibPath)) {
-    [System.Windows.Forms.MessageBox]::Show('חבילת ההתקנה חסרה קבצים.', 'Codex RTL', 'OK', 'Error') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show('חבילת ההתקנה חסרה קבצים.', 'Desktop RTL', 'OK', 'Error') | Out-Null
     return
 }
 . $script:LibPath
@@ -79,7 +79,7 @@ $form.AutoScroll = $true
 $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $form.MaximumSize = New-Object System.Drawing.Size(900, [Math]::Max(520, $wa.Height - 60))
 try {
-    $exe = Join-Path $script:CopyRoot 'app\Codex.exe'
+    $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
     if (Test-Path $exe) { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe) }
 } catch {}
 
@@ -228,12 +228,12 @@ $btnSave.Add_Click({
                     "Codex (RTL) פתוח כעת. כדי להחיל את השינויים צריך לסגור ולפתוח אותו מחדש." + [char]13 + [char]10 + [char]13 + [char]10 +
                     "לסגור אותו, להחיל, ולפתוח מחדש עכשיו?" + [char]13 + [char]10 +
                     "(אם לא - השינוי יוחל אוטומטית בפעם הבאה שתסגור/י את Codex (RTL).)",
-                    'Codex RTL', 'YesNo', 'Question')
+                    'Desktop RTL', 'YesNo', 'Question')
                 if ($ans -eq 'Yes') {
                     if (Stop-CodexRtlApp) {
                         try {
                             Update-CodexRtlConfigAsset -AppId 'codex'
-                            Start-Process -FilePath (Join-Path $script:CopyRoot 'app\Codex.exe')
+                            Start-Process -FilePath (Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath)
                             $status.Text = 'הוחל. Codex (RTL) נפתח מחדש עם ההגדרות החדשות.'
                         } catch { $status.Text = 'ההחלה נכשלה: ' + (Get-RtlHebrewError $_.Exception.Message) }
                     } else { $status.Text = 'לא ניתן היה לסגור את Codex (RTL). סגור/י אותו ידנית וההגדרות יוחלו אוטומטית.' }

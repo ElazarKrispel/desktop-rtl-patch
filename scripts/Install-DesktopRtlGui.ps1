@@ -1,8 +1,8 @@
-﻿# Install-CodexRtlGui.ps1
-# Friendly graphical installer for the Codex RTL patch (WinForms, Hebrew UI).
-# Wraps the already-tested library functions in codex-rtl-lib.ps1. No admin.
+﻿# Install-DesktopRtlGui.ps1
+# Friendly graphical installer for the Desktop RTL patch (WinForms, Hebrew UI).
+# Wraps the already-tested library functions in desktop-rtl-lib.ps1. No admin.
 #
-# Launched by Install-Codex-RTL.cmd (powershell -STA -WindowStyle Hidden), or directly.
+# Launched by Install-Desktop-RTL.cmd (powershell -STA -WindowStyle Hidden), or directly.
 # -SelfTest builds the form without showing it (for headless construction checks).
 
 param([switch]$NoRelaunch, [switch]$SelfTest)
@@ -22,7 +22,7 @@ if (-not $SelfTest -and -not $NoRelaunch) {
 
 $ErrorActionPreference = 'Stop'
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot         # ...\scripts\.. = repo root
-$script:LibPath  = Join-Path $script:RepoRoot 'scripts\lib\codex-rtl-lib.ps1'
+$script:LibPath  = Join-Path $script:RepoRoot 'scripts\lib\desktop-rtl-lib.ps1'
 
 # --- High DPI awareness (safe, staged) BEFORE creating any control -----------
 try {
@@ -57,7 +57,7 @@ public static extern int SetCurrentProcessExplicitAppUserModelID(string AppID);
 if (-not (Test-Path $script:LibPath)) {
     [System.Windows.Forms.MessageBox]::Show(
         "חבילת ההתקנה חסרה קבצים. ודא/י שחילצת את כל ה-ZIP, לא רק את קובץ ה-cmd, ונסה/י שוב.",
-        'Codex RTL', 'OK', 'Error') | Out-Null
+        'Desktop RTL', 'OK', 'Error') | Out-Null
     return
 }
 . $script:LibPath
@@ -66,7 +66,7 @@ try { Test-RtlPackage -RepoRoot $script:RepoRoot | Out-Null }
 catch {
     [System.Windows.Forms.MessageBox]::Show(
         "חבילת ההתקנה חסרה קבצים. ודא/י שחילצת את כל ה-ZIP, לא רק את קובץ ה-cmd, ונסה/י שוב.`n`n$($_.Exception.Message)",
-        'Codex RTL', 'OK', 'Error') | Out-Null
+        'Desktop RTL', 'OK', 'Error') | Out-Null
     return
 }
 
@@ -101,10 +101,12 @@ function Get-StepHebrew([string]$key) {
 
 function Get-RtlHebrewError([string]$msg) {
     if (-not $msg) { return 'הפעולה נכשלה. ראה/י את הלוג למטה ושלח/י אותו למפתח.' }
+    $appName = try { $script:ActiveProfile.DisplayName } catch { 'האפליקציה' }
     switch -Regex ($msg) {
-        '^\[NOCODEX\]' { 'Codex אינו מותקן. התקן/י אותו מחנות Microsoft, ואז לחץ/י "בדוק שוב".' ; break }
-        '^\[NODE\]'    { 'ה-Node המובנה של Codex לא נמצא. ייתכן ש-Codex לא הותקן במלואו או עודכן. נסה/י לתקן את Codex דרך החנות, ואז לנסות שוב.' ; break }
-        '^\[LAYOUT\]'  { 'Codex זוהה אך המבנה הפנימי שלו אינו כמצופה. ייתכן ש-Codex עודכן ושהכלי צריך עדכון. עדכן/י את הכלי או פנה/י למפתח.' ; break }
+        '^\[NOCODEX\]' { "$appName אינו מותקן. התקן/י אותו ואז לחץ/י ""בדוק שוב""." ; break }
+        '^\[NODE\]'    { "מנוע ה-Node של $appName לא נמצא. ייתכן שהאפליקציה לא הותקנה במלואה או עודכנה. נסה/י לתקן את ההתקנה ואז לנסות שוב." ; break }
+        '^\[LAYOUT\]'  { "$appName זוהה אך המבנה הפנימי שלו אינו כמצופה. ייתכן שהאפליקציה עודכנה ושהכלי צריך עדכון. עדכן/י את הכלי או פנה/י למפתח." ; break }
+        '^\[FUSE\]'    { "בגרסה זו של $appName אימות ה-asar מופעל, ולכן שיטת ההעתקה אינה יכולה להחיל את התיקון. אנא דווח/י למפתח." ; break }
         '^\[DISK\]'    { 'אין מספיק מקום פנוי בדיסק. פנה/י מספר GB ונסה/י שוב.' ; break }
         '^\[LOCK\]'    { 'חלק מהקבצים נעולים (אולי אנטי-וירוס, סייר הקבצים, או ש-Codex (RTL) פתוח). סגור/י אותם ונסה/י שוב.' ; break }
         '^\[AV\]'      { 'הפעולה נחסמה כנראה על ידי האנטי-וירוס (Windows Defender). הכלי עורך רק עותק מקומי של Codex ואינו נוגע במקור. אפשר לאשר זמנית או להוסיף חריגה ולנסות שוב.' ; break }
@@ -134,41 +136,72 @@ $form.MinimumSize = New-Object System.Drawing.Size(560, 460)
 $form.ClientSize  = New-Object System.Drawing.Size(580, 470)
 $form.MaximizeBox = $false
 $form.FormBorderStyle = 'Sizable'
-# Use Codex's own icon for the installer window (no separate branded icon).
-try {
-    $iconExe = $null
-    $cands = @((Join-Path $script:CopyRoot 'app\Codex.exe'))
-    $srcForIcon = $null; try { $srcForIcon = Resolve-CodexSource } catch {}
-    if ($srcForIcon) { $cands += (Join-Path $srcForIcon.AppDir 'Codex.exe') }
-    foreach ($c in $cands) { if (Test-Path $c) { $iconExe = $c; break } }
-    if ($iconExe) { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconExe) }
-} catch {}
+# Use the selected app's own icon for the installer window (no separate branded icon).
+# ExtractAssociatedIcon needs an Icon object, so this is the one place we extract; the
+# shortcut itself just points IconLocation at the exe.
+function Set-RtlFormIcon {
+    try {
+        $p = $script:ActiveProfile
+        $iconExe = $null
+        $cands = @((Join-Path $script:CopyRoot $p.ExeRelPath))
+        $srcForIcon = $null; try { $srcForIcon = Resolve-RtlSource } catch {}
+        if ($srcForIcon) { $cands += (Join-Path $srcForIcon.AppDir $p.ExeLeaf) }
+        foreach ($c in $cands) { if (Test-Path $c) { $iconExe = $c; break } }
+        if ($iconExe) { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconExe) }
+    } catch {}
+}
+Set-RtlFormIcon
 
 $root = New-Object System.Windows.Forms.TableLayoutPanel
 $root.Dock = 'Fill'
 $root.ColumnCount = 1
-$root.RowCount = 6
+$root.RowCount = 7
 $root.Padding = New-Object System.Windows.Forms.Padding(16)
 [void]$root.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
-foreach ($h in 0, 0, 0, 0, 100, 0) {
+foreach ($h in 0, 0, 0, 0, 0, 100, 0) {
     $t = if ($h -eq 0) { [System.Windows.Forms.SizeType]::AutoSize } else { [System.Windows.Forms.SizeType]::Percent }
     [void]$root.RowStyles.Add((New-Object System.Windows.Forms.RowStyle($t, $h)))
 }
 $form.Controls.Add($root)
+
+# --- App picker (single screen serves both Codex and OpenCode) ---------------
+$pickPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+$pickPanel.FlowDirection = 'RightToLeft'
+$pickPanel.AutoSize = $true
+$pickPanel.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+$pickPanel.Margin = New-Object System.Windows.Forms.Padding(3, 0, 3, 6)
+$pickLabel = New-Object System.Windows.Forms.Label
+$pickLabel.Text = 'אפליקציה:'
+$pickLabel.AutoSize = $true
+$pickLabel.Margin = New-Object System.Windows.Forms.Padding(3, 8, 6, 3)
+$pickCombo = New-Object System.Windows.Forms.ComboBox
+$pickCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$pickCombo.Width = 160
+$pickCombo.Margin = New-Object System.Windows.Forms.Padding(3, 4, 3, 3)
+[void]$pickCombo.Items.Add('Codex')
+[void]$pickCombo.Items.Add('OpenCode')
+$pickCombo.SelectedIndex = 0
+$pickPanel.Controls.AddRange(@($pickLabel, $pickCombo))
+$root.Controls.Add($pickPanel, 0, 0)
+$script:AppCombo = $pickCombo
+# ComboBox item index -> app id.
+$script:AppIds = @('codex', 'opencode')
 
 $title = New-Object System.Windows.Forms.Label
 $title.Text = 'תמיכת עברית (RTL) ל-Codex'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.AutoSize = $true
 $title.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 8)
-$root.Controls.Add($title, 0, 0)
+$root.Controls.Add($title, 0, 1)
+$script:TitleLabel = $title
 
 $desc = New-Object System.Windows.Forms.Label
-$desc.Text = 'מוסיף תמיכת עברית (כיוון מימין לשמאל) ל-Codex, בלי הרשאות מנהל. נוצר עותק נפרד בשם "Codex (RTL)"; ה-Codex המקורי לא משתנה. ההעתקה הראשונה לוקחת כדקה.'
+$desc.Text = ''
 $desc.AutoSize = $true
 $desc.MaximumSize = New-Object System.Drawing.Size(520, 0)
 $desc.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 10)
-$root.Controls.Add($desc, 0, 1)
+$root.Controls.Add($desc, 0, 2)
+$script:DescLabel = $desc
 
 $status = New-Object System.Windows.Forms.Label
 $status.Text = ''
@@ -176,7 +209,7 @@ $status.AutoSize = $true
 $status.MaximumSize = New-Object System.Drawing.Size(520, 0)
 $status.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $status.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 6)
-$root.Controls.Add($status, 0, 2)
+$root.Controls.Add($status, 0, 3)
 $script:StatusLabel = $status
 
 $progress = New-Object System.Windows.Forms.ProgressBar
@@ -186,7 +219,7 @@ $progress.Height = 22
 $progress.Anchor = [System.Windows.Forms.AnchorStyles]([System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right)
 $progress.Margin = New-Object System.Windows.Forms.Padding(3, 3, 3, 8)
 $progress.Visible = $false
-$root.Controls.Add($progress, 0, 3)
+$root.Controls.Add($progress, 0, 4)
 $script:ProgressBar = $progress
 
 $logBox = New-Object System.Windows.Forms.TextBox
@@ -196,7 +229,7 @@ $logBox.ScrollBars = 'Vertical'
 $logBox.WordWrap = $true
 $logBox.Dock = 'Fill'
 $logBox.BackColor = [System.Drawing.Color]::White
-$root.Controls.Add($logBox, 0, 4)
+$root.Controls.Add($logBox, 0, 5)
 $script:LogBox = $logBox
 
 $buttons = New-Object System.Windows.Forms.FlowLayoutPanel
@@ -206,7 +239,7 @@ $buttons.AutoSize = $true
 $buttons.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
 $buttons.Dock = 'Fill'
 $buttons.Margin = New-Object System.Windows.Forms.Padding(0, 8, 0, 0)
-$root.Controls.Add($buttons, 0, 5)
+$root.Controls.Add($buttons, 0, 6)
 
 function New-RtlButton([string]$text, [int]$minWidth = 110) {
     $b = New-Object System.Windows.Forms.Button
@@ -230,8 +263,24 @@ $btnOpenLogs = New-RtlButton 'פתח תיקיית לוגים'
 $btnClose = New-RtlButton 'סגור'
 $buttons.Controls.AddRange(@($btnPrimary, $btnSecondary, $btnUninstall, $btnDiag, $btnCopyLog, $btnBundle, $btnOpenLogs, $btnClose))
 
+# --- Switch the active app (rebinds the engine + reframes the UI) ------------
+function Select-RtlApp([string]$id) {
+    if ($script:Sync.Busy) { return }
+    Set-RtlActiveApp $id
+    $script:AppId = $id
+    $name = $script:ActiveProfile.DisplayName
+    $form.Text = "התקנת $name (RTL)"
+    $script:TitleLabel.Text = "תמיכת עברית (RTL) ל-$name"
+    $script:DescLabel.Text = "מוסיף תמיכת עברית (כיוון מימין לשמאל) ל-$name, בלי הרשאות מנהל. נוצר עותק נפרד בשם ""$name (RTL)""; ה-$name המקורי לא משתנה. ההעתקה הראשונה עשויה לקחת כדקה."
+    Set-RtlFormIcon
+    $script:LogBox.Clear()
+    $script:ProgressBar.Visible = $false
+    Update-Buttons
+}
+
 # --- State / preflight: frame the UI per Get-CodexRtlStatus ------------------
 function Update-Buttons {
+    $appName = $script:ActiveProfile.DisplayName
     if ($script:Sync.Busy) {
         foreach ($b in @($btnPrimary, $btnSecondary, $btnUninstall, $btnDiag, $btnCopyLog, $btnBundle, $btnOpenLogs, $btnClose)) { $b.Enabled = $false }
         return
@@ -240,14 +289,14 @@ function Update-Buttons {
     $btnPrimary.Enabled = $true; $btnSecondary.Visible = $false; $btnUninstall.Visible = $false
     $st = $null; try { $st = Get-CodexRtlStatus } catch {}
     if (-not $st -or -not $st.CodexFound) {
-        $status.Text = 'Codex אינו מותקן. התקן/י אותו מחנות Microsoft, ואז לחץ/י "בדוק שוב".'
+        $status.Text = "$appName אינו מותקן. התקן/י אותו ואז לחץ/י ""בדוק שוב""."
         $btnPrimary.Text = 'בדוק שוב'; $btnPrimary.Tag = 'recheck'
         if ($st -and $st.CopyExists) { $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true }
         return
     }
     switch ($st.State) {
         'Update' {
-            $status.Text = "Codex עודכן לגרסה $($st.AvailableVersion). נעדכן את גרסת ה-RTL."
+            $status.Text = "$appName עודכן לגרסה $($st.AvailableVersion). נעדכן את גרסת ה-RTL."
             $btnPrimary.Text = 'עדכן'; $btnPrimary.Tag = 'install'
             $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
         }
@@ -272,8 +321,8 @@ function Update-Buttons {
         }
         default {
             # UpToDate
-            $status.Text = "מותקן ומוכן (Codex v$($st.InstalledVersion)). אפשר לפתוח את Codex (RTL)."
-            $btnPrimary.Text = 'פתח את Codex (RTL)'; $btnPrimary.Tag = 'open'
+            $status.Text = "מותקן ומוכן ($appName v$($st.InstalledVersion)). אפשר לפתוח את $appName (RTL)."
+            $btnPrimary.Text = "פתח את $appName (RTL)"; $btnPrimary.Tag = 'open'
             $btnSecondary.Visible = $true; $btnSecondary.Enabled = $true
             $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
         }
@@ -282,8 +331,9 @@ function Update-Buttons {
 
 # --- Background install ------------------------------------------------------
 function Start-Install {
+    $appName = $script:ActiveProfile.DisplayName
     if (Test-CodexRtlRunning) {
-        [System.Windows.Forms.MessageBox]::Show('Codex (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.', 'Codex RTL', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("$appName (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.", 'Desktop RTL', 'OK', 'Warning') | Out-Null
         return
     }
     $script:Sync.Done = $false; $script:Sync.Ok = $false; $script:Sync.Err = $null
@@ -298,9 +348,11 @@ function Start-Install {
     $rs.SessionStateProxy.SetVariable('sync', $script:Sync)
     $rs.SessionStateProxy.SetVariable('libPath', $script:LibPath)
     $rs.SessionStateProxy.SetVariable('repoRoot', $script:RepoRoot)
+    $rs.SessionStateProxy.SetVariable('appId', $script:AppId)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
             . $libPath
+            Set-RtlActiveApp $appId
             $script:StepSink = { param($k, $p, $m) $sync.StepKey = $k; $sync.StepPct = $p; $sync.StepMarquee = $m }
             $script:UiSink = { param($msg) [void]$sync.Lines.Add($msg) }
             try {
@@ -323,13 +375,14 @@ function Start-Install {
 
 # --- Background uninstall ----------------------------------------------------
 function Start-Uninstall {
+    $appName = $script:ActiveProfile.DisplayName
     if (Test-CodexRtlRunning) {
-        [System.Windows.Forms.MessageBox]::Show('Codex (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.', 'Codex RTL', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("$appName (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.", 'Desktop RTL', 'OK', 'Warning') | Out-Null
         return
     }
     $r = [System.Windows.Forms.MessageBox]::Show(
-        'להסיר את Codex (RTL)? יוסרו העותק, הקיצורים והעדכון האוטומטי. ה-Codex המקורי לא ייפגע, וקובצי הלוג יישמרו.',
-        'Codex RTL', 'YesNo', 'Question')
+        "להסיר את $appName (RTL)? יוסרו העותק, הקיצורים והעדכון האוטומטי. ה-$appName המקורי לא ייפגע, וקובצי הלוג יישמרו.",
+        'Desktop RTL', 'YesNo', 'Question')
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     $script:Sync.Done = $false; $script:Sync.Ok = $false; $script:Sync.Err = $null
     $script:Sync.StepKey = ''; $script:Sync.StepPct = 0; $script:Sync.StepMarquee = $false
@@ -343,9 +396,11 @@ function Start-Uninstall {
     $rs.ApartmentState = 'STA'; $rs.ThreadOptions = 'ReuseThread'; $rs.Open()
     $rs.SessionStateProxy.SetVariable('sync', $script:Sync)
     $rs.SessionStateProxy.SetVariable('libPath', $script:LibPath)
+    $rs.SessionStateProxy.SetVariable('appId', $script:AppId)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
             . $libPath
+            Set-RtlActiveApp $appId
             $script:UiSink = { param($msg) [void]$sync.Lines.Add($msg) }
             try {
                 Start-RtlInstallLog 'uninstall' | Out-Null
@@ -404,7 +459,7 @@ $timer.Add_Tick({
                 }
                 else {
                     $script:ProgressBar.Style = 'Continuous'; $script:ProgressBar.Value = 100
-                    $script:StatusLabel.Text = 'ההתקנה הושלמה! אפשר לפתוח את Codex (RTL).'
+                    $script:StatusLabel.Text = "ההתקנה הושלמה! אפשר לפתוח את $($script:ActiveProfile.DisplayName) (RTL)."
                     Add-LogLine 'ההתקנה הושלמה בהצלחה.'
                 }
             }
@@ -413,7 +468,7 @@ $timer.Add_Tick({
                 $heb = Get-RtlHebrewError ([string]$script:Sync.Err)
                 $script:StatusLabel.Text = if ($isUninstall) { 'ההסרה נכשלה.' } else { 'ההתקנה נכשלה.' }
                 Add-LogLine $heb
-                [System.Windows.Forms.MessageBox]::Show($heb, 'Codex RTL', 'OK', 'Error') | Out-Null
+                [System.Windows.Forms.MessageBox]::Show($heb, 'Desktop RTL', 'OK', 'Error') | Out-Null
             }
             Update-Buttons
         }
@@ -426,9 +481,9 @@ $btnPrimary.Add_Click({
             'install' { Start-Install }
             'recheck' { Update-Buttons }
             'open' {
-                $exe = Join-Path $script:CopyRoot 'app\Codex.exe'
+                $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
                 if (Test-Path $exe) { Start-Process -FilePath $exe }
-                else { [System.Windows.Forms.MessageBox]::Show('לא נמצא קובץ ההפעלה. נסה/י להתקין מחדש.', 'Codex RTL', 'OK', 'Warning') | Out-Null }
+                else { [System.Windows.Forms.MessageBox]::Show('לא נמצא קובץ ההפעלה. נסה/י להתקין מחדש.', 'Desktop RTL', 'OK', 'Warning') | Out-Null }
             }
         }
     })
@@ -458,10 +513,10 @@ $btnDiag.Add_Click({
 $btnCopyLog.Add_Click({
         $log = if ($script:InstallLogFile -and (Test-Path $script:InstallLogFile)) { $script:InstallLogFile } elseif (Test-Path $script:LogFile) { $script:LogFile } else { $null }
         if ($log) {
-            try { [System.Windows.Forms.Clipboard]::SetText((Get-Content $log -Raw)); [System.Windows.Forms.MessageBox]::Show('הלוג הועתק. אפשר להדביק ולשלוח למפתח.', 'Codex RTL', 'OK', 'Information') | Out-Null }
-            catch { [System.Windows.Forms.MessageBox]::Show('לא ניתן להעתיק את הלוג.', 'Codex RTL', 'OK', 'Warning') | Out-Null }
+            try { [System.Windows.Forms.Clipboard]::SetText((Get-Content $log -Raw)); [System.Windows.Forms.MessageBox]::Show('הלוג הועתק. אפשר להדביק ולשלוח למפתח.', 'Desktop RTL', 'OK', 'Information') | Out-Null }
+            catch { [System.Windows.Forms.MessageBox]::Show('לא ניתן להעתיק את הלוג.', 'Desktop RTL', 'OK', 'Warning') | Out-Null }
         }
-        else { [System.Windows.Forms.MessageBox]::Show('עדיין אין קובץ לוג.', 'Codex RTL', 'OK', 'Information') | Out-Null }
+        else { [System.Windows.Forms.MessageBox]::Show('עדיין אין קובץ לוג.', 'Desktop RTL', 'OK', 'Information') | Out-Null }
     })
 
 $btnBundle.Add_Click({
@@ -471,10 +526,10 @@ $btnBundle.Add_Click({
             if ($zip -and (Test-Path $zip)) {
                 Add-LogLine "נוצרה חבילת אבחון: $zip"
                 Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,`"$zip`""
-                [System.Windows.Forms.MessageBox]::Show("נוצר קובץ אבחון (ZIP) שאפשר לשלוח למפתח.`r`n`r`n$zip", 'Codex RTL', 'OK', 'Information') | Out-Null
+                [System.Windows.Forms.MessageBox]::Show("נוצר קובץ אבחון (ZIP) שאפשר לשלוח למפתח.`r`n`r`n$zip", 'Desktop RTL', 'OK', 'Information') | Out-Null
             }
         }
-        catch { Add-LogLine "איסוף אבחון נכשל: $($_.Exception.Message)"; [System.Windows.Forms.MessageBox]::Show('לא ניתן היה לאסוף את חבילת האבחון.', 'Codex RTL', 'OK', 'Warning') | Out-Null }
+        catch { Add-LogLine "איסוף אבחון נכשל: $($_.Exception.Message)"; [System.Windows.Forms.MessageBox]::Show('לא ניתן היה לאסוף את חבילת האבחון.', 'Desktop RTL', 'OK', 'Warning') | Out-Null }
     })
 
 $btnOpenLogs.Add_Click({
@@ -489,16 +544,23 @@ $form.Add_FormClosing({
         param($s, $e)
         if ($script:Sync.Busy) {
             $e.Cancel = $true
-            [System.Windows.Forms.MessageBox]::Show('פעולה מתבצעת כעת. אנא המתן/י עד שתסתיים.', 'Codex RTL', 'OK', 'Warning') | Out-Null
+            [System.Windows.Forms.MessageBox]::Show('פעולה מתבצעת כעת. אנא המתן/י עד שתסתיים.', 'Desktop RTL', 'OK', 'Warning') | Out-Null
         }
     })
 
-$form.Add_Shown({ Update-Buttons })
+$script:AppCombo.Add_SelectedIndexChanged({
+        $i = $script:AppCombo.SelectedIndex
+        if ($i -ge 0) { Select-RtlApp $script:AppIds[$i] }
+    })
+
+$form.Add_Shown({ Select-RtlApp $script:AppIds[$script:AppCombo.SelectedIndex] })
 
 if ($SelfTest) {
-    # Construct + run preflight once, but do not block on ShowDialog.
-    Update-Buttons
-    Write-Host "SelfTest OK: form built; state = $((Get-CodexRtlStatus).State); label = [$($status.Text)]"
+    # Construct + run preflight once for BOTH apps, but do not block on ShowDialog.
+    foreach ($id in @('codex', 'opencode')) {
+        Select-RtlApp $id
+        Write-Host "SelfTest OK ($id): state = $((Get-CodexRtlStatus).State); label = [$($status.Text)]"
+    }
     $form.Dispose()
     return
 }

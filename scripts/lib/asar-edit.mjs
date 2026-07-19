@@ -1,33 +1,46 @@
 // asar-edit.mjs - surgical, dependency-free editor + verifier for an Electron ASAR.
+// App-agnostic: serves both Codex and OpenCode. Run by Codex's bundled node, or by
+// the app's own Electron exe as node (ELECTRON_RUN_AS_NODE=1 + ELECTRON_NO_ASAR=1 -
+// the second is REQUIRED or Electron's fs shim reads app.asar as an archive).
 //
-// Codex's custom "owl-electron" runtime loads resources\app.asar only (it does
-// NOT fall back to an unpacked app\ folder), so we must keep app.asar and edit
-// its contents. Rather than fully repack, we APPEND new bytes to the data
-// section and rewrite only the header. Existing file offsets are relative to the
-// data-section start, so they stay valid; only the touched entries change.
+// The Electron runtime loads resources\app.asar (it does NOT fall back to an unpacked
+// app\ folder), so we keep app.asar and edit its contents. Rather than fully repack,
+// we APPEND new bytes to the data section and rewrite only the header. Existing file
+// offsets are relative to the data-section start, so they stay valid; only the touched
+// entries change.
 //
 // Usage:
-//   node asar-edit.mjs inject <app.asar> <codex-rtl-patch.js> [bakArg]
+//   node asar-edit.mjs inject <app.asar> <patch.js> [--config <config.js>] [bakArg]
+//   node asar-edit.mjs config <app.asar> <config.js> [bakArg]
 //   node asar-edit.mjs verify <app.asar>
+//   node asar-edit.mjs fusestate <app.exe>   (read-only asar-integrity fuse check)
 //
 // Back-compat: if the first arg looks like a path to an .asar (not a subcommand),
 // it is treated as "inject" with the old positional arguments.
 //
-// inject:  adds <renderer>/assets/codex-rtl-patch.js and a <script> tag in the
-//          renderer index.html. Structurally idempotent and self-correcting: it
-//          repairs a partial prior injection (payload-only or tag-only) and never
-//          duplicates the tag. Writes a .bak of the original unless "--no-bak".
-// verify:  re-opens the asar, confirms the header parses, the payload entry exists
-//          in the header, and the <script> tag precedes the app bundle. Prints a
-//          single JSON line with SHA-256 of the payload and of the whole asar.
+// inject:  adds <renderer>/assets/<payload> and a <script> tag in the renderer
+//          index.html, before the app's own module bundle (appBundleMatch finds
+//          index-/main-/any hashed ./assets/*.js, excluding our payload). Structurally
+//          idempotent and self-correcting; writes a .bak of the original unless "--no-bak".
+// verify:  re-opens the asar, confirms the header parses, the payload entry exists,
+//          and the <script> tag precedes the app bundle. Prints a single JSON line.
+// fusestate: reads FuseV1Options idx 4 (EnableEmbeddedAsarIntegrityValidation) from the
+//          exe's fuse wire. Exit 0 = off/not-wired (patchable), 20 = ON, 21 = unreadable.
 //
 // Exit codes: 0 ok; 2 usage; 3 renderer not found; 4 bad asar header; 5 verify failed.
+// Payload/config file names come from RTL_PAYLOAD_NAME / RTL_CONFIG_NAME env (defaults below).
 
 import fs from "node:fs";
 import crypto from "node:crypto";
 
-const PAYLOAD_NAME = "codex-rtl-patch.js";
-const CONFIG_NAME = "codex-rtl-config.js";
+const PAYLOAD_NAME = process.env.RTL_PAYLOAD_NAME || "desktop-rtl-patch.js";
+const CONFIG_NAME = process.env.RTL_CONFIG_NAME || "desktop-rtl-config.js";
+
+// @electron/fuses wire markers (see doFuseState). Declared up here (not next to the
+// function) so the top-level command dispatch can call doFuseState without hitting a
+// temporal-dead-zone error on these consts.
+const FUSE_SENTINEL = Buffer.from("dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX", "latin1");
+const FUSE_ASAR_INTEGRITY_INDEX = 4;
 
 /* --------------------------------- args ---------------------------------- */
 
@@ -51,6 +64,10 @@ if (cmd === "inject") {
   const [asarPath] = rest;
   if (!asarPath) usage();
   doVerify(asarPath);
+} else if (cmd === "fusestate") {
+  const [exePath] = rest;
+  if (!exePath) usage();
+  doFuseState(exePath);
 } else {
   usage();
 }
@@ -71,7 +88,31 @@ function usage() {
   console.error("usage: node asar-edit.mjs inject <app.asar> <patch.js> [--config <config.js>] [--no-bak|bakPath]");
   console.error("       node asar-edit.mjs config <app.asar> <config.js> [--no-bak|bakPath]");
   console.error("       node asar-edit.mjs verify <app.asar>");
+  console.error("       node asar-edit.mjs fusestate <app.exe>");
   process.exit(2);
+}
+
+/* ------------------------------ fuse state ------------------------------- */
+
+// Read-only: report whether an Electron exe has the EnableEmbeddedAsarIntegrityValidation
+// fuse ON. The @electron/fuses wire is: the sentinel string, then a version byte, a
+// fuse-count byte, then one ASCII char per fuse ('0'=disabled, '1'=enabled, 'r'=removed).
+// FuseV1Options index 4 is EnableEmbeddedAsarIntegrityValidation (stable enum). We only
+// READ one byte, so no dependency is needed. Exit 0 = off / not wired (patchable);
+// 20 = ON (the copy-only method cannot patch this build); 21 = exe unreadable.
+function doFuseState(exePath) {
+  let buf;
+  try { buf = fs.readFileSync(exePath); }
+  catch (e) { console.error("cannot read exe: " + (e && e.message)); process.exit(21); }
+  const at = buf.indexOf(FUSE_SENTINEL);
+  if (at < 0) { console.log("fuse: sentinel not found (not wired)"); process.exit(0); }
+  const wireStart = at + FUSE_SENTINEL.length + 2; // skip version + count bytes
+  const count = buf[at + FUSE_SENTINEL.length + 1];
+  if (FUSE_ASAR_INTEGRITY_INDEX >= count) { console.log("fuse: index out of range (count=" + count + ")"); process.exit(0); }
+  const state = String.fromCharCode(buf[wireStart + FUSE_ASAR_INTEGRITY_INDEX]);
+  const on = state === "1";
+  console.log("fuse: asar-integrity=" + (on ? "ENABLED" : "disabled") + " (count=" + count + ")");
+  process.exit(on ? 20 : 0);
 }
 
 /* ------------------------------ asar parsing ----------------------------- */
@@ -146,8 +187,8 @@ function findRendererIndex(header, dataSection) {
   const scored = candidates.map((c) => {
     const p = c.parts.join("/").toLowerCase();
     let score = 0;
-    if (/<script[^>]*type=["']module["'][^>]*src=["']\.\/assets\/index-/i.test(c.text)) score += 100;
-    else if (c.text.includes("./assets/index-")) score += 50;
+    if (appBundleMatch(c.text)) score += 100;
+    else if (/\.\/assets\/[^"']+\.js/.test(c.text)) score += 50;
     if (/node_modules|[\\/](test|tests|fixtures?)[\\/]/.test(p)) score -= 40;
     score -= c.parts.length; // prefer shallower
     return { ...c, score };
@@ -160,6 +201,21 @@ function findRendererIndex(header, dataSection) {
 // Build a regex matching a <script ...src="...NAME"...></script> tag.
 function scriptTagRe(name, flags) {
   return new RegExp('<script[^>]*src=["\'][^"\']*' + name + '["\'][^>]*>\\s*</script>', flags);
+}
+
+// Locate the app's own entry bundle: a <script type="module"> loading a hashed .js
+// from ./assets/. Bundlers differ on the entry name (Codex: index-<hash>.js,
+// OpenCode: main-<hash>.js), so match any name and just exclude our own injected
+// payload/config assets. Returns { index, match, src } of the first real bundle.
+function appBundleMatch(html) {
+  const re = /<script[^>]*type=["']module["'][^>]*src=["'](\.\/assets\/[^"']+\.js)["'][^>]*>/ig;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const src = m[1];
+    if (src.endsWith(PAYLOAD_NAME) || src.endsWith(CONFIG_NAME)) continue;
+    return { index: m.index, match: m[0], src };
+  }
+  return null;
 }
 
 // Insert a classic (non-module) config <script> so window.__codexRtlConfig is set
@@ -194,9 +250,9 @@ function doInject(asarPath, patchJsPath, bakArg, configJsPath) {
   // a duplicated or mis-placed tag from a partial prior run.
   html = html.replace(scriptTagRe(PAYLOAD_NAME, "ig"), "");
   const tag = '<script type="module" crossorigin src="./assets/' + PAYLOAD_NAME + '"></script>';
-  const m = html.match(/<script type="module"[^>]*src="\.\/assets\/index-/);
-  if (m) {
-    html = html.replace(m[0], tag + m[0]);
+  const bundle = appBundleMatch(html);
+  if (bundle) {
+    html = html.slice(0, bundle.index) + tag + html.slice(bundle.index);
   } else {
     // No app bundle tag to anchor to; inject before </head> (or </body>).
     if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, tag + "</head>");
@@ -317,7 +373,8 @@ function doVerify(asarPath) {
   if (!tagRe.test(idx.text)) return verifyFail("payload <script> tag missing from index.html");
   // The payload tag must precede the app bundle so the global is set in time.
   const tagPos = idx.text.search(tagRe);
-  const bundlePos = idx.text.search(/<script type="module"[^>]*src="\.\/assets\/index-/);
+  const bundle = appBundleMatch(idx.text);
+  const bundlePos = bundle ? bundle.index : -1;
   if (bundlePos >= 0 && tagPos > bundlePos) return verifyFail("payload tag is after the app bundle");
 
   const payloadBuf = dataSection.subarray(offset, offset + size);

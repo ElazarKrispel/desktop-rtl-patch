@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Install the Codex RTL patch (patched copy + auto-update watcher), headless.
+    Install the Desktop RTL patch (patched copy + auto-update watcher), headless.
 .DESCRIPTION
     Builds a patched COPY of Codex (the original install is only read, never
     modified), creates "Codex <ivrit>" Start-menu and Desktop shortcuts, and
@@ -15,21 +15,23 @@
     Not used by the end-user GUI (which requires the bundled Node).
 #>
 [CmdletBinding()]
-param([switch]$NoWatcher, [switch]$AllowExternalNodeFallback)
+param([ValidateSet('codex','opencode')][string]$App = 'codex', [switch]$NoWatcher, [switch]$AllowExternalNodeFallback)
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot  = Split-Path -Parent $scriptDir
-. (Join-Path $scriptDir 'lib\codex-rtl-lib.ps1')
+. (Join-Path $scriptDir 'lib\desktop-rtl-lib.ps1')
+Set-RtlActiveApp $App
+$appName = $script:ActiveProfile.DisplayName
 
 Start-RtlInstallLog 'install' | Out-Null
 Test-RtlPackage -RepoRoot $repoRoot | Out-Null
 
 if (Test-CodexRtlRunning) {
-    throw "Codex (RTL) is currently running. Close it, then re-run the installer."
+    throw "$appName (RTL) is currently running. Close it, then re-run the installer."
 }
 
-Write-Host "[*] Building the patched Codex copy (first run copies ~1.6 GB)..." -ForegroundColor Cyan
+Write-Host "[*] Building the patched $appName copy..." -ForegroundColor Cyan
 Invoke-CodexRtlUpdate -Force -AllowExternalNodeFallback:$AllowExternalNodeFallback
 
 $state = Read-RtlState
@@ -43,9 +45,9 @@ if (-not $NoWatcher) {
 }
 
 Write-Host ""
-Write-Host "[OK] Codex RTL patch installed (Codex v$($state.codexVersion))." -ForegroundColor Green
-Write-Host "     Launch Codex from the '$($script:ShortcutLabel)' shortcut (Start menu or Desktop)." -ForegroundColor Green
+Write-Host "[OK] $appName RTL patch installed ($appName v$($state.codexVersion))." -ForegroundColor Green
+Write-Host "     Launch $appName from the '$($script:ShortcutLabel)' shortcut (Start menu or Desktop)." -ForegroundColor Green
 if (-not $NoWatcher) {
-    Write-Host "     Auto-update is ON (no admin) - re-patches when Codex updates, while Codex is closed." -ForegroundColor Green
+    Write-Host "     Auto-update is ON (no admin) - re-patches when $appName updates, while it is closed." -ForegroundColor Green
 }
-Write-Host "     The original Microsoft Store Codex is untouched." -ForegroundColor DarkGray
+Write-Host "     The original $appName install is untouched." -ForegroundColor DarkGray

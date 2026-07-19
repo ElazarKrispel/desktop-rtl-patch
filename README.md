@@ -1,10 +1,11 @@
-# codex-desktop-rtl-patch
+# desktop-rtl-patch
 
-**Hebrew / Arabic (right-to-left) support for the OpenAI Codex desktop app on Windows**,
-with a friendly graphical installer, automatic re-patching when Codex updates, and
+**Hebrew / Arabic (right-to-left) support for AI desktop apps on Windows**, currently the
+**OpenAI Codex** app (including the new ChatGPT-branded builds) and the **OpenCode** app,
+with a friendly graphical installer, automatic re-patching when the app updates, and
 **no administrator rights**.
 
-The Codex desktop app shows all chat text left-to-right, which makes Hebrew/Arabic look
+These apps show all chat text left-to-right, which makes Hebrew/Arabic look
 broken. This makes Hebrew/Arabic **prose** flow right-to-left (correct alignment and
 punctuation), while keeping code blocks and inline `` `code` `` strictly left-to-right and
 correctly placed inside a sentence, even when an English `` `token` `` sits in the middle of
@@ -13,14 +14,19 @@ a Hebrew line.
 It installs a **separate copy** named **"Codex (RTL)"**; your original Codex is never
 changed. **No Node.js is required** (it uses the Node that already ships inside Codex).
 
+Works with the current Codex desktop builds, including the new **ChatGPT-branded** app
+(the 2026 "owl" runtime update); the patcher detects the layout automatically.
+
 ## התקנה מהירה (עברית) 🚀
 
 1. ודאו ש-**Codex** מותקן (מ-Microsoft Store).
-2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/codex-desktop-rtl-patch/archive/refs/tags/v1.1.0.zip)**,
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.0.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
-3. דאבל-קליק על **`Install-Codex-RTL.vbs`**. נפתח חלון התקנה בעברית, לוחצים **"התקן"**
+3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית, לוחצים **"התקן"**
    וממתינים כדקה.
 4. פותחים את **"Codex (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
+
+> משתמשים ב-**OpenCode**? באותו חלון התקנה יש בורר אפליקציה למעלה. בוחרים OpenCode ולוחצים "התקן".
 
 > בלי הרשאות מנהל ובלי להתקין Node.js. ההעתקה הראשונה לוקחת כדקה, ומכאן זה מתעדכן לבד.
 > תמיד פותחים דרך **"Codex (RTL)"**. ה-Codex הרגיל נשאר LTR ולא משתנה.
@@ -33,8 +39,8 @@ changed. **No Node.js is required** (it uses the Node that already ships inside 
 
 ## Install (the easy way)
 
-1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/codex-desktop-rtl-patch/archive/refs/tags/v1.1.0.zip)** and extract it.
-2. Double-click **`Install-Codex-RTL.vbs`** (or `Install-Codex-RTL.cmd`). A small window opens.
+1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.0.0.zip)** and extract it.
+2. Double-click **`Install-Desktop-RTL.vbs`** (or `Install-Desktop-RTL.cmd`). A small window opens.
 3. Click **Install** and wait about a minute.
 
 It builds a patched copy at `%LOCALAPPDATA%\OpenAI\CodexRtl`, adds **"Codex (RTL)"** shortcuts
@@ -46,10 +52,10 @@ across Codex updates. **Your original Codex is never touched.**
 For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ElazarKrispel/codex-desktop-rtl-patch/v1.1.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.0.0/install.ps1 | iex
 ```
 
-This downloads the same code, pinned to the `v1.1.0` tag, and opens the installer window.
+This downloads the same code, pinned to the `v2.0.0` tag, and opens the installer window.
 Running a remote script means trusting it; if you are unsure, prefer the ZIP download above
 (it is exactly the same code, and you can read it first).
 
@@ -70,15 +76,43 @@ The Store updates Codex on its own, so the patched copy would otherwise fall beh
   **only while "Codex (RTL)" is closed** (atomic rename). It never restarts or breaks a
   running Codex; if you are using it, the swap waits until you next close it.
 * Force an update now from the installer window (**"התקן מחדש"**), or run
-  `powershell -ExecutionPolicy Bypass -File .\scripts\Update-CodexRtl.ps1`.
+  `powershell -ExecutionPolicy Bypass -File .\scripts\Update-DesktopRtl.ps1`.
 
 ## Uninstall
 
 * In the installer window, click **"הסר התקנה"** (Remove).
-* Or run: `powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-CodexRtl.ps1`
+* Or run: `powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-DesktopRtl.ps1`
 
 It removes the patched copy, the shortcuts, the watcher and its state. The log folder is kept
 for diagnostics (add `-PurgeLogs` to delete it too). The original Codex is unaffected.
+
+## OpenCode support
+
+The same tool also patches the **OpenCode desktop app** (by anomalyco/SST), with the identical
+safety model: a separate **"OpenCode (RTL)"** copy, the original install only read, no admin,
+no external Node.
+
+* In the installer window, pick **OpenCode** from the app selector at the top, then install as
+  usual.
+* From the command line, pass `-App opencode` to any script, e.g.
+  `powershell -ExecutionPolicy Bypass -File .\scripts\Install-DesktopRtl.ps1 -App opencode`
+  (same for `Update-DesktopRtl.ps1` / `Uninstall-DesktopRtl.ps1`). Codex remains the default when
+  `-App` is omitted, and the two installs are fully independent (separate copy, state, watcher
+  and shortcut).
+
+How it differs from Codex under the hood, and from other RTL patches:
+
+* **No bundled Node.** OpenCode ships no `node.exe`, so the editor runs the copy's own Electron
+  binary as Node via `ELECTRON_RUN_AS_NODE` (with `ELECTRON_NO_ASAR` so `fs` reads `app.asar` as
+  a plain file).
+* **The exe is never modified.** OpenCode's Windows build already ships with the embedded
+  asar-integrity fuse **disabled**, so the copy's `app.asar` can be edited without touching the
+  signed exe. Other RTL patches flip that fuse on the original signed binary and patch the
+  install in place; this tool does neither. A read-only check refuses to proceed if a future
+  build ever ships with that fuse enabled, instead of producing a broken copy.
+* The copy drops `resources\app-update.yml` so its updater never overwrites the patch, and the
+  background watcher re-applies the patch when the original OpenCode updates, while the copy is
+  closed.
 
 ## FAQ / troubleshooting
 
@@ -88,7 +122,7 @@ for diagnostics (add `-PurgeLogs` to delete it too). The original Codex is unaff
   conversations; "Codex (RTL)" is just a patched copy of the same app.
 * **Do I need to install Node.js?** No. The patch uses the Node runtime bundled inside Codex.
 * **A PowerShell window flashes when I use the `.cmd`.** That is just the launcher closing.
-  Use `Install-Codex-RTL.vbs` for no window at all.
+  Use `Install-Desktop-RTL.vbs` for no window at all.
 * **"Codex (RTL) is running."** Close it first (check the system tray), then try again.
 * **Something failed.** In the window, click **"העתק לוג"** (Copy log) or **"פתח תיקיית לוגים"**
   and send the log file; it has the technical details.
@@ -97,14 +131,14 @@ for diagnostics (add `-PurgeLogs` to delete it too). The original Codex is unaff
 
 ## How it works
 
-* **`src/codex-rtl-patch.js`** runs in the renderer. For each prose block whose non-code text
+* **`src/desktop-rtl-patch.js`** runs in the renderer. For each prose block whose non-code text
   contains Hebrew/Arabic it sets a real **`dir="rtl"`** attribute (correct ordering,
   `text-align: start` alignment, native bidi isolation). Injected CSS forces every code
   surface to `direction: ltr` + `unicode-bidi: isolate`. A `MutationObserver` re-applies `dir`
   to streamed or late content and survives React re-renders.
-* **`scripts/Install-CodexRtlGui.ps1`** is the graphical installer (WinForms, Hebrew). It wraps
+* **`scripts/Install-DesktopRtlGui.ps1`** is the graphical installer (WinForms, Hebrew). It wraps
   the shared library, shows progress, and offers install / update / open / uninstall.
-* **`scripts/lib/codex-rtl-lib.ps1`** resolves the Codex install, builds the patched copy with
+* **`scripts/lib/desktop-rtl-lib.ps1`** resolves the Codex install, builds the patched copy with
   staging plus an atomic swap, injects the script with Codex's bundled Node, and manages the
   watcher. It **only reads** the original Codex and edits a **separate copy**, never the
   original (a `[SAFETY]` guard enforces this).
@@ -120,20 +154,20 @@ LTR.
 ## Repository layout
 
 ```
-Install-Codex-RTL.vbs           double-click launcher (no console window)
-Install-Codex-RTL.cmd           alternative launcher (delegates to the .vbs)
-Codex-RTL-Tray.vbs              tray launcher (no console window)
+Install-Desktop-RTL.vbs           double-click launcher (no console window)
+Install-Desktop-RTL.cmd           alternative launcher (delegates to the .vbs)
+Desktop-RTL-Tray.vbs              tray launcher (no console window)
 install.ps1                     advanced one-line web bootstrap (pinned to a tag)
-src/codex-rtl-patch.js          injected renderer script (the RTL fix, configurable)
-scripts/Install-CodexRtlGui.ps1 graphical installer (WinForms, Hebrew)
-scripts/CodexRtlTray.ps1        system-tray app (auto-update + menu, subsumes the watcher)
-scripts/CodexRtlSettings.ps1    settings dialog (WinForms, Hebrew): direction, surfaces, font
-scripts/Install-CodexRtl.ps1    headless installer (advanced)
-scripts/Update-CodexRtl.ps1     force a re-patch now
-scripts/Uninstall-CodexRtl.ps1  remove the copy, shortcuts, tray/watcher, state
-scripts/Watch-CodexRtl.ps1      background watcher (event-driven auto-update, no admin)
+src/desktop-rtl-patch.js          injected renderer script (the RTL fix, configurable)
+scripts/Install-DesktopRtlGui.ps1 graphical installer (WinForms, Hebrew)
+scripts/DesktopRtlTray.ps1        system-tray app (auto-update + menu, subsumes the watcher)
+scripts/DesktopRtlSettings.ps1    settings dialog (WinForms, Hebrew): direction, surfaces, font
+scripts/Install-DesktopRtl.ps1    headless installer (advanced)
+scripts/Update-DesktopRtl.ps1     force a re-patch now
+scripts/Uninstall-DesktopRtl.ps1  remove the copy, shortcuts, tray/watcher, state
+scripts/Watch-DesktopRtl.ps1      background watcher (event-driven auto-update, no admin)
 scripts/Build-Release.ps1       package a checksummed release asset (maintainer helper)
-scripts/lib/codex-rtl-lib.ps1   shared logic: resolve, staging+swap, verify, config, watcher
+scripts/lib/desktop-rtl-lib.ps1   shared logic: resolve, staging+swap, verify, config, watcher
 scripts/lib/asar-edit.mjs       surgical, dependency-free asar editor + verifier (Node)
 test/bidi-harness.html          visual bidi test cases
 ```

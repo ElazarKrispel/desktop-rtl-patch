@@ -1,5 +1,5 @@
-﻿# CodexRtlTray.ps1
-# Resident system-tray app for the Codex RTL patch. It subsumes the background
+﻿# DesktopRtlTray.ps1
+# Resident system-tray app for the Desktop RTL patch. It subsumes the background
 # watcher: a hidden message pump keeps a NotifyIcon alive, an event-driven +
 # polled loop keeps "Codex (RTL)" patched across Codex updates (never interrupting
 # a running copy), and a menu exposes open / update / settings / diagnostics /
@@ -25,7 +25,7 @@ if (-not $SelfTest) {
             Rename-Item -LiteralPath $binStaging -NewName ([IO.Path]::GetFileName($binDir)) -Force
             if (Test-Path $binOld) { Remove-Item -LiteralPath $binOld -Recurse -Force -ErrorAction SilentlyContinue }
             Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
-            $freshVbs = Join-Path $binDir 'Codex-RTL-Tray.vbs'
+            $freshVbs = Join-Path $binDir 'Desktop-RTL-Tray.vbs'
             if (-not $NoRelaunch -and (Test-Path $freshVbs)) {
                 Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList "`"$freshVbs`""
                 return
@@ -51,7 +51,7 @@ $ErrorActionPreference = 'Stop'
 # The lib sits next to us in bin, or under scripts\lib in the repo.
 $here = $PSScriptRoot
 $script:LibPath = $null
-foreach ($c in @((Join-Path $here 'codex-rtl-lib.ps1'), (Join-Path $here 'lib\codex-rtl-lib.ps1'))) {
+foreach ($c in @((Join-Path $here 'desktop-rtl-lib.ps1'), (Join-Path $here 'lib\desktop-rtl-lib.ps1'))) {
     if (Test-Path $c) { $script:LibPath = $c; break }
 }
 if (-not $script:LibPath) { return }
@@ -96,11 +96,11 @@ $form.Width = 0; $form.Height = 0
 # --- tray icon ---------------------------------------------------------------
 $script:BaseIcon = [System.Drawing.SystemIcons]::Application
 try {
-    $exe = Join-Path $script:CopyRoot 'app\Codex.exe'
+    $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
     if (Test-Path $exe) { $script:BaseIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe) }
     else {
         $src = $null; try { $src = Resolve-CodexSource } catch {}
-        if ($src -and (Test-Path (Join-Path $src.AppDir 'Codex.exe'))) { $script:BaseIcon = [System.Drawing.Icon]::ExtractAssociatedIcon((Join-Path $src.AppDir 'Codex.exe')) }
+        if ($src -and (Test-Path (Join-Path $src.AppDir $script:ActiveProfile.ExeLeaf))) { $script:BaseIcon = [System.Drawing.Icon]::ExtractAssociatedIcon((Join-Path $src.AppDir $script:ActiveProfile.ExeLeaf)) }
     }
 } catch {}
 
@@ -281,7 +281,7 @@ function Get-TrayError([string]$m) {
 
 # --- menu actions ------------------------------------------------------------
 $miOpen.Add_Click({
-        $exe = Join-Path $script:CopyRoot 'app\Codex.exe'
+        $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
         if (Test-Path $exe) { Start-Process -FilePath $exe }
     })
 $miUpdate.Add_Click({ Start-TrayPass -Force })
@@ -292,14 +292,14 @@ $miAuto.Add_Click({
     })
 $miSettings.Add_Click({
         # Prefer the VBS launcher so no PowerShell console window ever flashes.
-        $vbs = Join-Path $here 'Codex-RTL-Settings.vbs'
-        if (-not (Test-Path $vbs)) { $vbs = Join-Path (Split-Path $here -Parent) 'Codex-RTL-Settings.vbs' }
+        $vbs = Join-Path $here 'Desktop-RTL-Settings.vbs'
+        if (-not (Test-Path $vbs)) { $vbs = Join-Path (Split-Path $here -Parent) 'Desktop-RTL-Settings.vbs' }
         if (Test-Path $vbs) {
             Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList "`"$vbs`""
             return
         }
-        $s = Join-Path $here 'CodexRtlSettings.ps1'
-        if (-not (Test-Path $s)) { $s = Join-Path (Split-Path $here -Parent) 'scripts\CodexRtlSettings.ps1' }
+        $s = Join-Path $here 'DesktopRtlSettings.ps1'
+        if (-not (Test-Path $s)) { $s = Join-Path (Split-Path $here -Parent) 'scripts\DesktopRtlSettings.ps1' }
         if (Test-Path $s) { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-WindowStyle', 'Hidden', '-File', $s) }
     })
 $miDiag.Add_Click({

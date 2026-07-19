@@ -1,7 +1,7 @@
 @echo off
 rem ============================================================================
-rem  Codex RTL - friendly graphical installer (Hebrew / right-to-left support).
+rem  Desktop RTL - friendly graphical installer (Hebrew / right-to-left support).
 rem  Delegates to the VBS launcher so NO PowerShell/console window appears.
-rem  (Double-clicking Install-Codex-RTL.vbs directly is just as good.)
+rem  (Double-clicking Install-Desktop-RTL.vbs directly is just as good.)
 rem ============================================================================
-start "" wscript.exe //nologo "%~dp0Install-Codex-RTL.vbs"
+start "" wscript.exe //nologo "%~dp0Install-Desktop-RTL.vbs"

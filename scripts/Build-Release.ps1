@@ -1,6 +1,6 @@
 # Build-Release.ps1 - package a checksummed release asset for a version tag.
 # -----------------------------------------------------------------------------
-# Produces dist\codex-desktop-rtl-patch-<Version>.zip (a single top-level folder,
+# Produces dist\desktop-rtl-patch-<Version>.zip (a single top-level folder,
 # the layout install.ps1 expects) plus dist\SHA256SUMS.txt covering it. Upload BOTH
 # as assets on the GitHub release so install.ps1 and the self-updater can verify the
 # download against the checksum before extracting.
@@ -14,14 +14,15 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $dist     = Join-Path $repoRoot 'dist'
 $stageTop = Join-Path $dist 'staging'
-$folder   = 'codex-desktop-rtl-patch'
+$folder   = 'desktop-rtl-patch'
 $stage    = Join-Path $stageTop $folder
-$zipName  = "codex-desktop-rtl-patch-$Version.zip"
+$zipName  = "desktop-rtl-patch-$Version.zip"
 $zipPath  = Join-Path $dist $zipName
 $sumsPath = Join-Path $dist 'SHA256SUMS.txt'
 
 # Only ship what the installer needs; never the repo plumbing or build artifacts.
-$include = @('scripts', 'src', 'test', 'install.ps1', 'Install-Codex-RTL.vbs', 'Install-Codex-RTL.cmd', 'README.md', 'LICENSE')
+$include = @('scripts', 'src', 'test', 'install.ps1', 'Install-Desktop-RTL.vbs', 'Install-Desktop-RTL.cmd',
+             'Desktop-RTL-Tray.vbs', 'Desktop-RTL-Settings.vbs', 'README.md', 'LICENSE')
 
 if (Test-Path $stageTop) { Remove-Item -LiteralPath $stageTop -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null

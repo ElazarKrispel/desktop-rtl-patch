@@ -18,7 +18,7 @@
 //   * Hebrew tables flip whole-column order (dir="rtl" on the <table>), decided by
 //     the majority direction of the header / first column.
 //
-// Configurable: a sibling `codex-rtl-config.js` asset may set
+// Configurable: a sibling `desktop-rtl-config.js` asset may set
 //   window.__codexRtlConfig = { enabled, direction:{policy}, surfaces:{...}, font:{...} }
 // BEFORE this script runs. When absent, every setting falls back to the historical
 // defaults, so an unconfigured install behaves like the previous release (plus the
