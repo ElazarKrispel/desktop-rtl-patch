@@ -23,7 +23,9 @@ $zip = Join-Path $tmp 'src.zip'
 # We prefer a CHECKSUMMED release asset (a zip we upload alongside a SHA256SUMS.txt),
 # verify its SHA-256 before extracting, and abort on any mismatch. Older releases that
 # have no asset fall back to GitHub's auto source archive (integrity not verifiable).
-$assetZip = "https://github.com/$Repo/releases/download/$Tag/desktop-rtl-patch-$Tag.zip"
+# NOTE: the asset name carries the BARE version (Build-Release.ps1 -Version 2.0.0
+# produces desktop-rtl-patch-2.0.0.zip), while the tag has the 'v' prefix.
+$assetZip = "https://github.com/$Repo/releases/download/$Tag/desktop-rtl-patch-$($Tag.TrimStart('v')).zip"
 $sumsUrl  = "https://github.com/$Repo/releases/download/$Tag/SHA256SUMS.txt"
 $srcZip   = "https://github.com/$Repo/archive/refs/tags/$Tag.zip"
 
