@@ -559,6 +559,25 @@ function Clear-RtlRendererCache {
     }
 }
 
+# Launch the ACTIVE app's patched copy as a normal GUI app. Critical for
+# electron-as-node profiles: Set-RtlActiveApp sets ELECTRON_RUN_AS_NODE /
+# ELECTRON_NO_ASAR process-wide (for the asar editor), and a child inherits them,
+# which would start the app as a headless Node process that exits immediately.
+# Strip them for the launch, then restore.
+function Start-RtlCopyApp {
+    $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
+    if (-not (Test-Path $exe)) { return $false }
+    $saveRun = $env:ELECTRON_RUN_AS_NODE; $saveAsar = $env:ELECTRON_NO_ASAR
+    Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+    Remove-Item Env:ELECTRON_NO_ASAR -ErrorAction SilentlyContinue
+    try { Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe -Parent) }
+    finally {
+        if ($saveRun)  { $env:ELECTRON_RUN_AS_NODE = $saveRun }
+        if ($saveAsar) { $env:ELECTRON_NO_ASAR = $saveAsar }
+    }
+    return $true
+}
+
 function Resolve-CodexSource {
     # Prefer the Microsoft Store (MSIX) package.
     $pkg = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue | Select-Object -First 1

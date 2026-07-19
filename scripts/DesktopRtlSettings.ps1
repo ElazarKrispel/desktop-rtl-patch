@@ -233,7 +233,7 @@ $btnSave.Add_Click({
                     if (Stop-CodexRtlApp) {
                         try {
                             Update-CodexRtlConfigAsset -AppId 'codex'
-                            Start-Process -FilePath (Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath)
+                            [void](Start-RtlCopyApp)
                             $status.Text = 'הוחל. Codex (RTL) נפתח מחדש עם ההגדרות החדשות.'
                         } catch { $status.Text = 'ההחלה נכשלה: ' + (Get-RtlHebrewError $_.Exception.Message) }
                     } else { $status.Text = 'לא ניתן היה לסגור את Codex (RTL). סגור/י אותו ידנית וההגדרות יוחלו אוטומטית.' }

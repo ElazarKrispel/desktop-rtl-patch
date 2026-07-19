@@ -487,9 +487,7 @@ $btnPrimary.Add_Click({
             'install' { Start-Install }
             'recheck' { Update-Buttons }
             'open' {
-                $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
-                if (Test-Path $exe) { Start-Process -FilePath $exe }
-                else { [System.Windows.Forms.MessageBox]::Show('לא נמצא קובץ ההפעלה. נסה/י להתקין מחדש.', 'Desktop RTL', 'OK', 'Warning') | Out-Null }
+                if (-not (Start-RtlCopyApp)) { [System.Windows.Forms.MessageBox]::Show('לא נמצא קובץ ההפעלה. נסה/י להתקין מחדש.', 'Desktop RTL', 'OK', 'Warning') | Out-Null }
             }
         }
     })

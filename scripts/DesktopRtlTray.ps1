@@ -281,8 +281,7 @@ function Get-TrayError([string]$m) {
 
 # --- menu actions ------------------------------------------------------------
 $miOpen.Add_Click({
-        $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
-        if (Test-Path $exe) { Start-Process -FilePath $exe }
+        [void](Start-RtlCopyApp)
     })
 $miUpdate.Add_Click({ Start-TrayPass -Force })
 $miAuto.Add_Click({
