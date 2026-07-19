@@ -559,6 +559,9 @@ $script:AppCombo.Add_SelectedIndexChanged({
     })
 
 $form.Add_Shown({ Select-RtlApp $script:AppIds[$script:AppCombo.SelectedIndex] })
+# Refresh the status whenever the window regains focus, so a window left open
+# while an install ran elsewhere never shows a stale state. Skipped mid-operation.
+$form.Add_Activated({ if (-not $script:Sync.Busy) { try { Update-Buttons } catch {} } })
 
 if ($SelfTest) {
     # Construct + run preflight once for BOTH apps, but do not block on ShowDialog.
