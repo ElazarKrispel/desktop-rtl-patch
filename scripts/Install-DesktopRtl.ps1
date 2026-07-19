@@ -38,10 +38,13 @@ $state = Read-RtlState
 if (-not $state) { throw "Install did not complete. See $($script:LogFile)." }
 
 if (-not $NoWatcher) {
-    Write-Host "[*] Setting up the auto-update watcher..." -ForegroundColor Cyan
-    $watch = Copy-RtlBin -RepoRoot $repoRoot
-    Register-CodexRtlWatcher -WatchScript $watch
-    Start-CodexRtlWatcher -WatchScript $watch
+    Write-Host "[*] Setting up the unified background agent (one tray for all apps)..." -ForegroundColor Cyan
+    # Deploy the single neutral agent (migrate toggles, transactional bin swap, verify
+    # readiness, register autostart, evict any legacy per-app watchers). Installing
+    # EITHER app registers/refreshes the one agent, which then manages every installed
+    # app. It stops any resident tray before the swap and starts a fresh one, so a newly
+    # installed second app is picked up immediately.
+    Install-RtlAgent -RepoRoot $repoRoot
 }
 
 Write-Host ""

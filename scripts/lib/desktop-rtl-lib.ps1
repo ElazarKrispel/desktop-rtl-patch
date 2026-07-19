@@ -20,8 +20,40 @@
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.0.4'
+$script:PatchVersion  = '2.1.0'
 $script:SchemaVersion = 2
+
+# --- Agent-scoped globals (v2.1.0 unified tray agent) ------------------------
+# The unified background agent (one tray for ALL apps) lives in its OWN neutral home,
+# SEPARATE from any app's per-app state. These are set ONCE here and are NEVER rebound
+# by Set-RtlActiveApp - deployment, self-update, registration and agent logging must be
+# app-independent (a self-update pass that happens to end on OpenCode must still stage
+# into the neutral agent bin, not OpenCode's per-app bin). Per-app paths below still
+# switch with Set-RtlActiveApp.
+$script:AgentHome            = Join-Path $env:LOCALAPPDATA 'DesktopRtlPatch'
+$script:AgentBinDir          = Join-Path $script:AgentHome 'bin'
+$script:AgentBinStaging      = "$($script:AgentBinDir).staging"
+$script:AgentBinOld          = "$($script:AgentBinDir).old"
+$script:AgentLogFile         = Join-Path $script:AgentHome 'agent.log'
+$script:AgentConfigFile      = Join-Path $script:AgentHome 'agent.json'
+$script:AgentLockFile        = Join-Path $script:AgentHome 'agent.lock'
+$script:AgentPendingSelfUpdate = Join-Path $script:AgentHome 'pending-selfupdate'
+$script:AgentMarker          = Join-Path $script:AgentHome 'migrated.marker'   # versioned migration marker
+$script:AgentReadyFile       = Join-Path $script:AgentHome 'ready.json'        # tray writes PID + loaded generation
+$script:AgentGenFile         = Join-Path $script:AgentBinDir 'generation.txt'  # deploy stamps expected generation
+$script:AgentRunName         = 'DesktopRtlAgent'                               # single HKCU\Run value
+$script:AgentSetupMutexName  = 'Local\DesktopRtlAgentSetup'                    # guards migrate/swap/register
+$script:AgentTrayMutexName   = 'Local\DesktopRtlTray'                          # single tray instance
+# Allowed roots for ownership-checked eviction of autostart/watcher commands. A stored
+# Run command or process is only touched if its script path canonicalizes UNDER one of
+# these (with a separator boundary), so we never delete a same-named user value or kill
+# an unrelated process.
+$script:AgentAllowedBinRoots = @(
+    $script:AgentBinDir,
+    (Join-Path $env:LOCALAPPDATA 'CodexRtlPatch\bin'),
+    (Join-Path $env:LOCALAPPDATA 'RtlPatch\opencode\bin')
+)
+
 $script:StateDir   = Join-Path $env:LOCALAPPDATA 'CodexRtlPatch'
 $script:BinDir     = Join-Path $script:StateDir 'bin'
 $script:LogsDir    = Join-Path $script:StateDir 'logs'
@@ -405,10 +437,11 @@ function Get-RtlDefaultAppConfig {
 }
 
 function Get-RtlDefaultConfig {
+    # Per-app RTL surfaces only. The two GLOBAL toggles (autoPatch, checkForToolUpdates)
+    # moved to the unified agent's agent.json (Read/Write-RtlAgentConfig) so there is a
+    # single writable owner - they are intentionally NOT here anymore.
     return [ordered]@{
-        schemaVersion       = $script:ConfigSchemaVersion
-        autoPatch           = $true
-        checkForToolUpdates = $true
+        schemaVersion = $script:ConfigSchemaVersion
         apps = [ordered]@{
             codex    = Get-RtlDefaultAppConfig
             opencode = Get-RtlDefaultAppConfig
@@ -423,8 +456,7 @@ function Read-RtlConfig {
     if (Test-Path $script:ConfigFile) {
         try {
             $j = (Get-Content $script:ConfigFile -Raw) | ConvertFrom-Json
-            if ($null -ne $j.autoPatch)           { $cfg.autoPatch = [bool]$j.autoPatch }
-            if ($null -ne $j.checkForToolUpdates) { $cfg.checkForToolUpdates = [bool]$j.checkForToolUpdates }
+            # autoPatch / checkForToolUpdates intentionally ignored here (agent.json owns them).
             foreach ($appId in @($cfg.apps.Keys)) {
                 $c = if ($j.apps) { $j.apps.$appId } else { $null }
                 if (-not $c) { continue }
@@ -1501,6 +1533,8 @@ function Copy-RtlBin {
         @{ src = 'scripts\DesktopRtlSettings.ps1';  dst = 'DesktopRtlSettings.ps1'; req = $false },
         @{ src = 'Desktop-RTL-Tray.vbs';            dst = 'Desktop-RTL-Tray.vbs';   req = $false },
         @{ src = 'Desktop-RTL-Settings.vbs';        dst = 'Desktop-RTL-Settings.vbs'; req = $false },
+        # Brand icon for the unified tray (used by the NotifyIcon + its badge variant).
+        @{ src = 'assets\desktop-rtl.ico';          dst = 'desktop-rtl.ico';        req = $false },
         # Legacy alias: a pre-rename tray (v1.x) applying a self-update looks for the old
         # launcher name in the fresh bin; ship it so the relaunch after bin-swap still works.
         @{ src = 'Desktop-RTL-Tray.vbs';            dst = 'Codex-RTL-Tray.vbs';     req = $false }
@@ -1512,6 +1546,390 @@ function Copy-RtlBin {
     }
     Write-RtlLog "Deployed runtime to $Dest"
     return (Join-Path $Dest 'Watch-DesktopRtl.ps1')
+}
+
+# =================================================================== unified agent
+# One background agent (a single tray) manages every installed app. It lives in the
+# neutral AgentHome, separate from any app's per-app state. Everything here uses the
+# immutable $script:Agent* globals, NOT the per-app paths that Set-RtlActiveApp swaps.
+
+function Write-RtlAgentLog {
+    param([string]$Message)
+    $line = "$([DateTime]::Now.ToString('o'))  [$PID]  $Message"
+    Write-Host $line
+    try {
+        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+        if ((Test-Path $script:AgentLogFile) -and (Get-Item $script:AgentLogFile).Length -gt 1MB) { Move-Item $script:AgentLogFile "$($script:AgentLogFile).old" -Force }
+        Add-Content -LiteralPath $script:AgentLogFile -Value $line -Encoding UTF8
+    } catch {}
+}
+
+# Run a block while holding the single agent setup mutex (guards migration, bin swap
+# and Run-key registration/eviction). Windows mutexes are re-entrant per-thread, so a
+# guarded function may call another guarded function on the same thread. An abandoned
+# mutex (a crash mid-operation) triggers crash recovery before continuing.
+function Invoke-RtlWithSetupMutex {
+    param([scriptblock]$Body)
+    $m = New-Object System.Threading.Mutex($false, $script:AgentSetupMutexName)
+    $owned = $false
+    try {
+        try { $owned = $m.WaitOne() }
+        catch [System.Threading.AbandonedMutexException] {
+            $owned = $true
+            Write-RtlAgentLog 'setup mutex was abandoned by a crashed process; running bin recovery.'
+            Invoke-RtlBinSwapRecovery
+        }
+        return (& $Body)
+    } finally {
+        if ($owned) { try { $m.ReleaseMutex() } catch {} }
+        $m.Dispose()
+    }
+}
+
+# ---- agent config (the two GLOBAL toggles; single source of truth) -----------
+function Get-RtlDefaultAgentConfig {
+    return [ordered]@{ schemaVersion = 1; autoPatch = $true; checkForToolUpdates = $true }
+}
+function Read-RtlAgentConfig {
+    $cfg = Get-RtlDefaultAgentConfig
+    if (Test-Path $script:AgentConfigFile) {
+        try {
+            $j = (Get-Content $script:AgentConfigFile -Raw) | ConvertFrom-Json
+            if ($null -ne $j.autoPatch)           { $cfg.autoPatch = [bool]$j.autoPatch }
+            if ($null -ne $j.checkForToolUpdates) { $cfg.checkForToolUpdates = [bool]$j.checkForToolUpdates }
+        } catch { Write-RtlAgentLog "agent config read failed, using defaults: $($_.Exception.Message)" }
+    }
+    return $cfg
+}
+function Write-RtlAgentConfig {
+    param($Config)
+    Invoke-RtlWithSetupMutex {
+        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+        $json = ([pscustomobject]$Config) | ConvertTo-Json -Depth 4
+        $tmp = "$($script:AgentConfigFile).tmp"
+        $enc = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($tmp, $json, $enc)
+        # File.Replace needs an existing destination, so it cannot do the first write.
+        if (Test-Path $script:AgentConfigFile) {
+            [System.IO.File]::Replace($tmp, $script:AgentConfigFile, "$($script:AgentConfigFile).bak")
+        } else {
+            [System.IO.File]::Move($tmp, $script:AgentConfigFile)
+        }
+        Write-RtlAgentLog 'agent config written.'
+    }
+}
+
+# ---- migration: lift the two toggles from the old split installs -------------
+# Config-only (never copies the old bin - the current package is deployed fresh).
+# Guarded by a versioned marker written ONLY after every step succeeds.
+function Invoke-RtlAgentMigration {
+    Invoke-RtlWithSetupMutex {
+        if (Test-Path $script:AgentMarker) { return }
+        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+        $needConfig = $true
+        if (Test-Path $script:AgentConfigFile) {
+            $valid = $false
+            try { $null = (Get-Content $script:AgentConfigFile -Raw) | ConvertFrom-Json; $valid = $true } catch {}
+            if ($valid) { $needConfig = $false }
+            else {
+                $q = "$($script:AgentConfigFile).corrupt"
+                try { if (Test-Path $q) { Remove-Item -LiteralPath $q -Force }
+                      Rename-Item -LiteralPath $script:AgentConfigFile -NewName ([IO.Path]::GetFileName($q)) -Force
+                      Write-RtlAgentLog 'quarantined a corrupt agent.json before migration.' } catch {}
+            }
+        }
+        if ($needConfig) {
+            $auto = $true; $chk = $true; $from = 'defaults'
+            # codex-first precedence, then opencode, then defaults.
+            foreach ($old in @((Join-Path $env:LOCALAPPDATA 'CodexRtlPatch\config.json'),
+                               (Join-Path $env:LOCALAPPDATA 'RtlPatch\opencode\config.json'))) {
+                if (Test-Path $old) {
+                    try {
+                        $j = (Get-Content $old -Raw) | ConvertFrom-Json
+                        if ($null -ne $j.autoPatch)           { $auto = [bool]$j.autoPatch }
+                        if ($null -ne $j.checkForToolUpdates) { $chk = [bool]$j.checkForToolUpdates }
+                        $from = $old; break
+                    } catch {}
+                }
+            }
+            Write-RtlAgentLog "migrating global toggles from ${from}: autoPatch=$auto checkForToolUpdates=$chk"
+            Write-RtlAgentConfig ([ordered]@{ schemaVersion = 1; autoPatch = $auto; checkForToolUpdates = $chk })
+        }
+        Set-Content -LiteralPath $script:AgentMarker -Value "v$($script:PatchVersion)" -Encoding ASCII -NoNewline
+        Write-RtlAgentLog 'agent migration complete.'
+    }
+}
+
+# ---- installed-app detection -------------------------------------------------
+# Installed = the RTL COPY exe exists (the same signal Get-CodexRtlStatus uses). A
+# state file WITHOUT a copy exe is stale (a failed cleanup) and is logged, not counted.
+function Get-RtlInstalledApps {
+    $save = $script:ActiveProfile.Id
+    $ids = @()
+    try {
+        foreach ($id in @('codex', 'opencode')) {
+            Set-RtlActiveApp $id | Out-Null
+            $copyExe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
+            if (Test-Path $copyExe) { $ids += $id }
+            elseif (Test-Path $script:StateFile) { Write-RtlAgentLog "stale state for '$id' (no copy exe at $copyExe); not counted." }
+        }
+    } finally { Set-RtlActiveApp $save | Out-Null }
+    return $ids
+}
+
+# ---- strict command parsing + ownership (security-critical eviction) ---------
+function ConvertTo-RtlCanonicalPath {
+    param([string]$Path)
+    if (-not $Path) { return $null }
+    $p = [Environment]::ExpandEnvironmentVariables($Path)
+    try { $p = [IO.Path]::GetFullPath($p) } catch { return $null }
+    return $p.TrimEnd('\')
+}
+function Test-RtlPathUnderRoot {
+    param([string]$Path, [string[]]$Roots)
+    $cp = ConvertTo-RtlCanonicalPath $Path
+    if (-not $cp) { return $false }
+    foreach ($r in $Roots) {
+        $cr = ConvertTo-RtlCanonicalPath $r
+        if (-not $cr) { continue }
+        if ($cp.Equals($cr, [StringComparison]::OrdinalIgnoreCase) -or
+            $cp.StartsWith($cr + '\', [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+# Parse a stored Run/watcher command into its script path, or $null if ambiguous.
+# Tokenizes respecting double-quotes; the script is the first .vbs/.ps1 token or the
+# value after -File. Anything we cannot parse unambiguously returns $null (left alone).
+function Get-RtlCommandScriptPath {
+    param([string]$CommandLine)
+    if (-not $CommandLine) { return $null }
+    $tokens = @()
+    foreach ($m in ([regex]'"([^"]*)"|(\S+)').Matches($CommandLine)) {
+        if ($m.Groups[1].Success) { $tokens += $m.Groups[1].Value } else { $tokens += $m.Groups[2].Value }
+    }
+    for ($i = 1; $i -lt $tokens.Count; $i++) {
+        $t = $tokens[$i]
+        if ($t -match '(?i)^-File$' -and ($i + 1) -lt $tokens.Count) { return $tokens[$i + 1] }
+        if ($t -match '(?i)\.(vbs|ps1)$') { return $t }
+    }
+    return $null
+}
+$script:RtlKnownLaunchers = @(
+    'Desktop-RTL-Tray.vbs', 'Codex-RTL-Tray.vbs', 'DesktopRtlTray.ps1',
+    'Watch-DesktopRtl.ps1', 'Watch-CodexRtl.ps1', 'CodexRtlTray.ps1'
+)
+# Legacy per-app bin roots (NOT the neutral AgentBinDir) - used to evict the OLD
+# per-app watchers/tray without ever touching the freshly launched unified tray.
+$script:RtlLegacyBinRoots = @(
+    (Join-Path $env:LOCALAPPDATA 'CodexRtlPatch\bin'),
+    (Join-Path $env:LOCALAPPDATA 'RtlPatch\opencode\bin')
+)
+# Is this command one of OUR launchers under one of the given roots?
+function Test-RtlOwnedCommand {
+    param([string]$CommandLine, [string[]]$Roots = $script:AgentAllowedBinRoots)
+    $sp = Get-RtlCommandScriptPath $CommandLine
+    if (-not $sp) { return $false }
+    if ([IO.Path]::GetFileName($sp) -notin $script:RtlKnownLaunchers) { return $false }
+    return (Test-RtlPathUnderRoot -Path $sp -Roots $Roots)
+}
+# Stop processes whose command is one of our launchers under $Roots (never self).
+function Stop-RtlOwnedProcesses {
+    param([string[]]$Roots, [int[]]$ExceptPids = @())
+    try {
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessId -ne $PID -and ($ExceptPids -notcontains $_.ProcessId) -and (Test-RtlOwnedCommand $_.CommandLine -Roots $Roots)
+        } | ForEach-Object {
+            try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-RtlAgentLog "stopped PID $($_.ProcessId): $($_.CommandLine)" }
+            catch { Write-RtlAgentLog "could not stop PID $($_.ProcessId): $($_.Exception.Message)" }
+        }
+    } catch {}
+}
+
+# ---- generation-tagged readiness --------------------------------------------
+function New-RtlAgentGeneration { return ([Guid]::NewGuid().ToString('N')) }
+function Read-RtlAgentGeneration {
+    if (Test-Path $script:AgentGenFile) { try { return (Get-Content $script:AgentGenFile -Raw).Trim() } catch {} }
+    return $null
+}
+function Write-RtlAgentReady {
+    param([string]$Generation)
+    try {
+        $o = [pscustomobject]@{ pid = $PID; generation = $Generation; at = [DateTime]::Now.ToString('o') }
+        [System.IO.File]::WriteAllText($script:AgentReadyFile, ($o | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding $false))
+    } catch {}
+}
+# Wait until a live tray reports readiness at $Generation (bounded). Verifies the PID
+# is alive so a stale ready.json from a dead process cannot satisfy the check.
+function Wait-RtlAgentReady {
+    param([string]$Generation, [int]$TimeoutSec = 25)
+    $deadline = [DateTime]::Now.AddSeconds($TimeoutSec)
+    while ([DateTime]::Now -lt $deadline) {
+        if (Test-Path $script:AgentReadyFile) {
+            try {
+                $r = (Get-Content $script:AgentReadyFile -Raw) | ConvertFrom-Json
+                if ($r.generation -eq $Generation -and (Get-Process -Id $r.pid -ErrorAction SilentlyContinue)) { return $true }
+            } catch {}
+        }
+        Start-Sleep -Milliseconds 400
+    }
+    return $false
+}
+
+# ---- crash-safe bin swap (shared algorithm) ----------------------------------
+# Recovery for an interrupted swap: if the live bin is missing/empty but bin.old is
+# intact, restore it. Safe to call anytime (idempotent).
+function Invoke-RtlBinSwapRecovery {
+    try {
+        $liveOk = (Test-Path (Join-Path $script:AgentBinDir 'desktop-rtl-lib.ps1'))
+        if (-not $liveOk -and (Test-Path (Join-Path $script:AgentBinOld 'desktop-rtl-lib.ps1'))) {
+            if (Test-Path $script:AgentBinDir) { Remove-Item -LiteralPath $script:AgentBinDir -Recurse -Force -ErrorAction SilentlyContinue }
+            Rename-Item -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
+            Write-RtlAgentLog 'recovered agent bin from bin.old after an interrupted swap.'
+        }
+    } catch { Write-RtlAgentLog "bin recovery failed: $($_.Exception.Message)" }
+}
+# Validate a staged bin directory has the required runtime files and they parse.
+function Test-RtlStagedBin {
+    param([string]$Dir)
+    foreach ($f in @('desktop-rtl-lib.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1')) {
+        if (-not (Test-Path (Join-Path $Dir $f))) { return $false }
+    }
+    $errs = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $Dir 'desktop-rtl-lib.ps1'), [ref]$null, [ref]$errs)
+    return (-not $errs -or $errs.Count -eq 0)
+}
+# Swap AgentBinStaging into AgentBinDir, keeping bin.old until the caller confirms the
+# new generation reached readiness (D5). Returns the generation stamped into the new bin
+# on success; $null on validation failure (staging left in place, live bin untouched).
+function Invoke-RtlBinSwap {
+    return (Invoke-RtlWithSetupMutex {
+        if (-not (Test-RtlStagedBin $script:AgentBinStaging)) {
+            Write-RtlAgentLog "staging invalid; refusing swap ($($script:AgentBinStaging))."
+            return $null
+        }
+        $gen = New-RtlAgentGeneration
+        Set-Content -LiteralPath (Join-Path $script:AgentBinStaging 'generation.txt') -Value $gen -Encoding ASCII -NoNewline
+        if (Test-Path $script:AgentBinOld) { Remove-Item -LiteralPath $script:AgentBinOld -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $script:AgentBinDir) { Rename-Item -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($script:AgentBinOld)) -Force }
+        Rename-Item -LiteralPath $script:AgentBinStaging -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
+        if (-not (Test-RtlStagedBin $script:AgentBinDir)) {
+            Write-RtlAgentLog 'new bin failed post-swap validation; rolling back to bin.old.'
+            if (Test-Path $script:AgentBinDir) { Rename-Item -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($script:AgentBinStaging)) -Force }
+            if (Test-Path $script:AgentBinOld) { Rename-Item -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force }
+            return $null
+        }
+        Write-RtlAgentLog "bin swapped in (generation $gen); bin.old retained pending readiness."
+        return $gen
+    })
+}
+# Restore bin.old after a readiness failure (the new bin parses but crashes at runtime).
+function Restore-RtlBinOld {
+    Invoke-RtlWithSetupMutex {
+        if (-not (Test-Path $script:AgentBinOld)) { Write-RtlAgentLog 'no bin.old to restore.'; return $false }
+        $failed = "$($script:AgentBinDir).failed"
+        if (Test-Path $failed) { Remove-Item -LiteralPath $failed -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $script:AgentBinDir) { Rename-Item -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($failed)) -Force }
+        Rename-Item -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
+        Write-RtlAgentLog 'restored bin.old after a readiness failure.'
+        return $true
+    }
+}
+function Complete-RtlBinSwap {
+    # Called once the new generation is confirmed ready: drop the retained bin.old.
+    if (Test-Path $script:AgentBinOld) { try { Remove-Item -LiteralPath $script:AgentBinOld -Recurse -Force } catch {} }
+}
+
+# ---- HKCU\Run registration (idempotent, ownership-checked) -------------------
+function Get-RtlAgentRunCommand {
+    $ws  = Join-Path $env:WINDIR 'System32\wscript.exe'
+    $vbs = Join-Path $script:AgentBinDir 'Desktop-RTL-Tray.vbs'
+    return "`"$ws`" `"$vbs`""
+}
+function Register-RtlAgent {
+    # Idempotent: writes the single DesktopRtlAgent Run value only if missing/different,
+    # then evicts the legacy per-app Run values + processes (ownership/path-verified).
+    Invoke-RtlWithSetupMutex {
+        $cmd = Get-RtlAgentRunCommand
+        if (-not (Test-Path $script:RunKey)) { New-Item -Path $script:RunKey -Force | Out-Null }
+        $cur = $null
+        try { $cur = (Get-ItemProperty -Path $script:RunKey -Name $script:AgentRunName -ErrorAction Stop).$($script:AgentRunName) } catch {}
+        if ($cur -ne $cmd) {
+            Set-ItemProperty -Path $script:RunKey -Name $script:AgentRunName -Value $cmd
+            Write-RtlAgentLog "registered autostart HKCU\Run\$($script:AgentRunName): $cmd"
+        } else { Write-RtlAgentLog 'autostart already current; no registry write.' }
+        foreach ($name in @('CodexRtlPatchWatcher', 'OpenCodeRtlPatchWatcher')) {
+            $val = $null
+            try { $val = (Get-ItemProperty -Path $script:RunKey -Name $name -ErrorAction Stop).$name } catch {}
+            if (-not $val) { continue }
+            if (Test-RtlOwnedCommand $val) {
+                try { Remove-ItemProperty -Path $script:RunKey -Name $name -ErrorAction Stop; Write-RtlAgentLog "evicted legacy Run value '$name'." }
+                catch { Write-RtlAgentLog "could not remove Run value '$name': $($_.Exception.Message)" }
+            } else { Write-RtlAgentLog "left Run value '$name' (not a recognized RTL launcher): $val" }
+        }
+        Stop-RtlOwnedProcesses -Roots $script:RtlLegacyBinRoots   # kill old per-app watchers/tray, never the new one
+    }
+}
+function Unregister-RtlAgent {
+    Invoke-RtlWithSetupMutex {
+        Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)      # stop the unified tray (never self)
+        $val = $null
+        try { $val = (Get-ItemProperty -Path $script:RunKey -Name $script:AgentRunName -ErrorAction Stop).$($script:AgentRunName) } catch {}
+        if ($val -and -not (Test-RtlOwnedCommand $val)) { Write-RtlAgentLog "left agent Run value (unrecognized): $val"; return }
+        try { Remove-ItemProperty -Path $script:RunKey -Name $script:AgentRunName -ErrorAction Stop; Write-RtlAgentLog 'removed agent autostart.' }
+        catch { Write-RtlAgentLog 'no agent autostart to remove.' }
+    }
+}
+
+# ---- installer-side deploy + consolidation (rollback-safe ordering, D8) -------
+# stage -> stop existing unified tray -> swap -> launch -> verify readiness ->
+# register -> evict legacy. Legacy autostart is removed ONLY after the new agent is
+# proven runnable at the expected generation; on readiness failure we roll back and
+# leave the legacy autostart in place.
+function Install-RtlAgent {
+    param([string]$RepoRoot)
+    Invoke-RtlAgentMigration
+    if (Test-Path $script:AgentBinStaging) { Remove-Item -LiteralPath $script:AgentBinStaging -Recurse -Force -ErrorAction SilentlyContinue }
+    Copy-RtlBin -RepoRoot $RepoRoot -Dest $script:AgentBinStaging | Out-Null
+    Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)          # stop any existing unified tray before swap
+    Start-Sleep -Milliseconds 400                                 # let the stopped tray release any bin handles
+    $gen = Invoke-RtlBinSwap
+    if (-not $gen) { throw '[PACKAGE] agent bin staging/swap failed; nothing changed.' }
+    $vbs = Get-RtlTrayLauncher -BinDir $script:AgentBinDir
+    if (-not $vbs) { throw '[PACKAGE] tray launcher missing from the deployed bin.' }
+    if (Test-Path $script:AgentReadyFile) { try { Remove-Item -LiteralPath $script:AgentReadyFile -Force } catch {} }
+    Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList "`"$vbs`""
+    if (Wait-RtlAgentReady -Generation $gen) {
+        Complete-RtlBinSwap
+        Register-RtlAgent                                        # register + evict legacy only now
+        Write-RtlAgentLog "agent deployed and ready (generation $gen)."
+    } else {
+        Write-RtlAgentLog 'new agent did not report readiness; rolling back and keeping legacy autostart.'
+        Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)
+        Restore-RtlBinOld | Out-Null
+        throw '[PACKAGE] the new agent did not start; rolled back. The previous setup is unchanged.'
+    }
+}
+
+# Restart the resident unified tray so it re-detects the installed-app set (used after
+# installing/uninstalling one app while the tray is already running).
+function Restart-RtlAgentTray {
+    Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)
+    $vbs = Get-RtlTrayLauncher -BinDir $script:AgentBinDir
+    if ($vbs) { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList "`"$vbs`""; Write-RtlAgentLog 'restarted unified tray.' }
+}
+
+# Last-app cleanup: no app remains, so tear the agent down. Path-verified stop of the
+# tray, unregister the Run value, remove the neutral runtime; agent.log is retained.
+function Invoke-RtlAgentLastCleanup {
+    Invoke-RtlWithSetupMutex {
+        Unregister-RtlAgent
+        foreach ($p in @($script:AgentBinDir, $script:AgentBinStaging, $script:AgentBinOld,
+                         $script:AgentPendingSelfUpdate, $script:AgentMarker, $script:AgentConfigFile,
+                         $script:AgentReadyFile, "$($script:AgentConfigFile).bak")) {
+            if (Test-Path $p) { try { Remove-Item -LiteralPath $p -Recurse -Force; Write-RtlAgentLog "removed $p" } catch { Write-RtlAgentLog "could not remove $p : $($_.Exception.Message)" } }
+        }
+        Write-RtlAgentLog 'last-app agent cleanup done (agent.log kept).'
+    }
 }
 
 # ----------------------------------------------------------------- self-update
@@ -1582,12 +2000,13 @@ function Invoke-RtlSelfUpdate {
             $root = Get-ChildItem -Directory -Path $tmp | Select-Object -First 1
             if (-not $root) { throw '[INTEGRITY] update archive was empty.' }
             Test-RtlPackage -RepoRoot $root.FullName | Out-Null
-            $binStaging = "$($script:BinDir).staging"
-            if (Test-Path $binStaging) { Remove-Item -LiteralPath $binStaging -Recurse -Force }
-            Copy-RtlBin -RepoRoot $root.FullName -Dest $binStaging | Out-Null
-            if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
-            Set-Content -LiteralPath $script:PendingSelfUpdate -Value $Info.LatestTag -Encoding ASCII -NoNewline
-            Write-RtlLog "Self-update staged $($Info.LatestTag); will apply on next tray start."
+            # Stage into the NEUTRAL agent bin (not any per-app bin). The tray's pre-load
+            # swap block applies it on next start, then relaunches from the fresh bin.
+            if (Test-Path $script:AgentBinStaging) { Remove-Item -LiteralPath $script:AgentBinStaging -Recurse -Force }
+            Copy-RtlBin -RepoRoot $root.FullName -Dest $script:AgentBinStaging | Out-Null
+            if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+            Set-Content -LiteralPath $script:AgentPendingSelfUpdate -Value $Info.LatestTag -Encoding ASCII -NoNewline
+            Write-RtlAgentLog "Self-update staged $($Info.LatestTag); will apply on next tray start."
             return $true
         } finally { try { Remove-Item -LiteralPath $tmp -Recurse -Force } catch {} }
     } finally { Exit-RtlLock }
@@ -1596,27 +2015,37 @@ function Invoke-RtlSelfUpdate {
 # ----------------------------------------------------------------- uninstall
 
 function Invoke-CodexRtlUninstall {
-    # Remove the watcher, the patched copy (+ staging/old), all shortcuts and state.
+    # Remove THIS app's patched copy (+ staging/old), per-app bin, shortcuts and state.
+    # Agent lifecycle (the shared Run value + neutral home) is NOT managed here - the
+    # caller decides that after recomputing the remaining installed apps. Returns a
+    # structured result so the caller can retain the agent when cleanup is uncertain.
     # The logs folder is KEPT by default (for diagnostics); pass -PurgeLogs to delete it.
     param([switch]$PurgeLogs)
     if (Test-CodexRtlRunning) { throw '[LOCK] Codex (RTL) is running. Close it and try again.' }
     if (-not (Enter-RtlLock)) { throw '[LOCK] An update is in progress; try again in a moment.' }
+    $uncertain = $false
     try {
-        Unregister-CodexRtlWatcher   # stops the watcher/tray + removes the Run key + legacy task
-        if (Test-Path $script:PendingSelfUpdate) { try { Remove-Item -LiteralPath $script:PendingSelfUpdate -Force } catch {} }
+        Stop-CodexRtlWatcher   # stop only THIS app's legacy watcher (path/-App scoped); never the agent tray
         foreach ($d in @($script:CopyRoot, $script:Staging, $script:OldRoot, $script:BinDir, "$($script:BinDir).staging", "$($script:BinDir).old")) {
             if (Test-Path $d) {
                 try { Remove-Item -LiteralPath $d -Recurse -Force; Write-RtlLog "removed $d" }
-                catch { Write-RtlLog "could not remove $d : $($_.Exception.Message)" }
+                catch { $uncertain = $true; Write-RtlLog "could not remove $d : $($_.Exception.Message)" }
             }
         }
         foreach ($lnk in $script:ShortcutPaths) {
-            if (Test-Path $lnk) { try { Remove-Item -LiteralPath $lnk -Force; Write-RtlLog "removed $lnk" } catch {} }
+            if (Test-Path $lnk) { try { Remove-Item -LiteralPath $lnk -Force; Write-RtlLog "removed $lnk" } catch { $uncertain = $true } }
         }
         foreach ($f in @($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker)) {
-            if ($f -and (Test-Path $f)) { try { Remove-Item -LiteralPath $f -Force } catch {} }
+            if ($f -and (Test-Path $f)) { try { Remove-Item -LiteralPath $f -Force } catch { $uncertain = $true } }
         }
-        if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-Item -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch {} }
-        Write-RtlLog 'Uninstall complete.'
+        # Remove this app's LEGACY per-app Run value if it is still ours (the agent replaces it).
+        try {
+            $legacy = $script:ActiveProfile.WatcherRunName
+            $val = (Get-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue).$legacy
+            if ($val -and (Test-RtlOwnedCommand $val)) { Remove-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue; Write-RtlLog "removed legacy Run value $legacy" }
+        } catch {}
+        if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-Item -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true } }
+        Write-RtlLog "Per-app uninstall complete (app=$($script:ActiveProfile.Id), certain=$(-not $uncertain))."
     } finally { Exit-RtlLock }
+    return [pscustomobject]@{ App = $script:ActiveProfile.Id; Certain = (-not $uncertain) }
 }
