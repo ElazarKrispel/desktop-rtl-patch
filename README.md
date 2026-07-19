@@ -14,6 +14,7 @@ Supported apps:
 |---|---|---|
 | **OpenAI Codex desktop** (new builds are branded **ChatGPT**) | Microsoft Store | "Codex (RTL)" |
 | **OpenCode desktop** (anomalyco / SST) | opencode.ai installer | "OpenCode (RTL)" |
+| **Traycer desktop** (traycer.ai) | traycer.ai installer | "Traycer (RTL)" |
 
 These apps show all chat text left-to-right, which makes Hebrew/Arabic look broken. This tool
 makes Hebrew/Arabic **prose** flow right-to-left (correct alignment and punctuation), while
@@ -26,12 +27,12 @@ It installs a **separate patched copy** per app; your original installs are neve
 ## התקנה מהירה (עברית) 🚀
 
 1. ודאו שהאפליקציה שרוצים לתקן מותקנת: **Codex** מה-Microsoft Store (בגרסאות החדשות היא
-   כבר נקראת **ChatGPT**), או **OpenCode**.
-2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.1.0.zip)**,
+   כבר נקראת **ChatGPT**), **OpenCode**, או **Traycer**.
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.2.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
 3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית. בוחרים את האפליקציה
-   בבורר שלמעלה (Codex או OpenCode), לוחצים **"התקן"** וממתינים כדקה.
-4. פותחים את **"Codex (RTL)"** או **"OpenCode (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
+   בבורר שלמעלה (Codex, OpenCode או Traycer), לוחצים **"התקן"** וממתינים כדקה.
+4. פותחים את **"Codex (RTL)"**, **"OpenCode (RTL)"** או **"Traycer (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
 
 > בלי הרשאות מנהל ובלי להתקין Node.js. ההעתקה הראשונה לוקחת כדקה, ומכאן זה מתעדכן לבד.
 > תמיד פותחים דרך קיצור הדרך עם ה-(RTL); האפליקציה המקורית נשארת LTR ולא משתנה.
@@ -44,29 +45,35 @@ It installs a **separate patched copy** per app; your original installs are neve
     that install/rename themselves to **ChatGPT** are fully supported, and the patcher detects
     the layout automatically.
   * **OpenCode desktop** (the regular installer from opencode.ai).
+  * **Traycer desktop** (the installer from traycer.ai).
 * **Windows 10 or 11** with Windows PowerShell 5.1 (built in).
 * **No administrator rights**, and **no Node.js** (the patch uses the app's own runtime).
 
 ## Install (the easy way)
 
-1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.1.0.zip)** and extract it.
+1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.2.0.zip)** and extract it.
 2. Double-click **`Install-Desktop-RTL.vbs`** (or `Install-Desktop-RTL.cmd`). A small window opens.
 3. Pick the app at the top (Codex is the default), click **Install** and wait about a minute.
 
 It builds a patched copy (Codex under `%LOCALAPPDATA%\OpenAI\CodexRtl`, OpenCode under
-`%LOCALAPPDATA%\RtlPatch\opencode`), adds an **"(RTL)" shortcut** to the Desktop and Start
-menu, and starts a background watcher that keeps the copy patched across app updates.
-**Your original installs are never touched.**
+`%LOCALAPPDATA%\RtlPatch\opencode`, Traycer under `%LOCALAPPDATA%\RtlPatch\traycer`), adds an
+**"(RTL)" shortcut** to the Desktop and Start menu, and starts a background agent that keeps
+the copy patched across app updates. **Your original installs are never touched.**
+
+> Traycer note: Traycer serves its interface from plain files on disk (not from inside its
+> packed bundle), so the RTL patch edits just that one HTML file in the **copy** and drops in a
+> small script. Nothing binary is touched: the copy's program files stay byte-for-byte identical
+> to the original. Copy-only, no administrator rights, original never modified.
 
 ## Advanced: one-line install
 
 For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.1.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.2.0/install.ps1 | iex
 ```
 
-This downloads the same code, pinned to the `v2.1.0` tag (verified against a published
+This downloads the same code, pinned to the `v2.2.0` tag (verified against a published
 SHA-256 checksum), and opens the installer window. Running a remote script means trusting it;
 if you are unsure, prefer the ZIP download above (it is exactly the same code, and you can
 read it first).
@@ -75,11 +82,11 @@ Prefer no window at all? Add `RTL_SILENT` (and optionally `RTL_APP`) on the same
 whole install runs headless in the terminal:
 
 ```powershell
-$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.1.0/install.ps1 | iex
-$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.1.0/install.ps1 | iex
+$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.2.0/install.ps1 | iex
+$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.2.0/install.ps1 | iex
 ```
 
-Headless CLI (both take `-App codex|opencode`, default codex):
+Headless CLI (all take `-App codex|opencode|traycer`, default codex):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-DesktopRtl.ps1 -App opencode
@@ -137,17 +144,26 @@ original apps are unaffected.
 * **No bundled Node**: the editor runs the copy's own Electron binary as Node via
   `ELECTRON_RUN_AS_NODE` (with `ELECTRON_NO_ASAR` so `fs` reads `app.asar` as a plain file).
 * The copy drops `resources\app-update.yml` so its updater never overwrites the patch; updates
-  flow only through the original + the watcher.
+  flow only through the original + the agent.
 
-**Both**, and unlike other RTL patches:
+**Traycer** (per-user):
 
-* **The signed executables are never modified.** These builds ship with the embedded
-  asar-integrity fuse **disabled**, so only the copy's `app.asar` is edited. Other RTL patches
-  flip that fuse on the original signed binary and patch the install in place; this tool does
-  neither. A read-only check refuses to proceed if a future build ever ships with the fuse
-  enabled, instead of producing a broken copy.
-* Everything is **copy-only**: a `[SAFETY]` guard in the code refuses to write anywhere except
-  the tool's own staging/copy folders.
+* Shaped like OpenCode (exe at the tree root, `app-update.yml` dropped from the copy), but with
+  one key difference: Traycer does **not** serve its renderer from inside `app.asar`. Its main
+  process registers a custom `app://` protocol and serves the UI from the **loose** directory
+  `resources\renderer\` (`index.html` + `assets\`). So the patch simply edits that loose
+  `index.html` in the copy and drops the RTL script into its `assets\` - **no `app.asar` edit and
+  no executable edit at all**. The copy's `app.asar` and `Traycer.exe` stay **byte-identical** to
+  the original, so Traycer's asar-integrity setting is irrelevant and no Node is needed.
+
+**All three**, and unlike other RTL patches:
+
+* **The original install is never modified** - only a separate copy is ever written, guarded by a
+  `[SAFETY]` check that refuses to touch anything outside the tool's own staging/copy folders. For
+  Codex and OpenCode the copy's `app.asar` is the only edited file (their asar-integrity fuse ships
+  disabled); for Traycer only a loose renderer HTML file is edited (no binary touched at all).
+  Other RTL patches flip a fuse on the **original signed binary** and patch the install in place;
+  this tool never touches the original.
 
 ## FAQ / troubleshooting
 
@@ -205,8 +221,8 @@ src/desktop-rtl-patch.js          injected renderer script (the RTL fix, configu
 scripts/Install-DesktopRtlGui.ps1 graphical installer (WinForms, Hebrew, app selector)
 scripts/DesktopRtlTray.ps1        system-tray app (auto-update + menu, subsumes the watcher)
 scripts/DesktopRtlSettings.ps1    settings dialog (WinForms, Hebrew): direction, surfaces, font
-scripts/Install-DesktopRtl.ps1    headless installer (advanced), -App codex|opencode
-scripts/Update-DesktopRtl.ps1     force a re-patch now, -App codex|opencode
+scripts/Install-DesktopRtl.ps1    headless installer (advanced), -App codex|opencode|traycer
+scripts/Update-DesktopRtl.ps1     force a re-patch now, -App codex|opencode|traycer
 scripts/Uninstall-DesktopRtl.ps1  remove the copy, shortcuts, tray/watcher, state
 scripts/Watch-DesktopRtl.ps1      background watcher (event-driven auto-update, no admin)
 scripts/Build-Release.ps1         package a checksummed release asset (maintainer helper)

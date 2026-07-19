@@ -20,7 +20,7 @@
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.1.0'
+$script:PatchVersion  = '2.2.0'
 $script:SchemaVersion = 2
 
 # --- Agent-scoped globals (v2.1.0 unified tray agent) ------------------------
@@ -304,6 +304,61 @@ function Get-RtlProfile {
                 UpdateHelper      = $null
             }
         }
+        'traycer' {
+            # Traycer (traycerai/traycer) - Electron, shaped like OpenCode (exe at the tree
+            # root, resources\app.asar + app.asar.unpacked + app-update.yml, no bundled node).
+            # KEY DIFFERENCE (verified at runtime via CDP): Traycer does NOT serve its renderer
+            # from inside app.asar. The main process registers a custom app:// protocol and
+            # serves the renderer from the LOOSE directory `resources\renderer\` on disk
+            # (index.html + assets\). So we patch that loose index.html directly (RendererMode
+            # 'dir') and never touch app.asar OR the exe - both stay byte-identical. That means
+            # the asar-integrity fuse (which pins app.asar) is irrelevant, and no node is needed
+            # (the loose HTML is edited with plain PowerShell). Pure copy-only, no admin.
+            # (The asar's own dist/renderer/index.html is an unused build artifact - patching it,
+            # or flipping the exe fuses, had ZERO runtime effect; that was the first-attempt bug.)
+            $base = Join-Path $env:LOCALAPPDATA 'RtlPatch\traycer'
+            return [pscustomobject]@{
+                Id                = 'traycer'
+                DisplayName       = 'Traycer'
+                ShortcutLabel     = 'Traycer (RTL)'
+                ShortcutDesc      = 'Traycer with Hebrew / RTL support'
+                Mode              = 'copy'
+                RequiresElevation = $false
+                AppxName          = $null          # NSIS-style per-user, no Store/Appx
+                SourceRoots       = @(
+                    (Join-Path $env:LOCALAPPDATA 'Programs\Traycer')
+                )
+                StateDir          = $base
+                CopyRoot          = (Join-Path $base 'copy')
+                Staging           = (Join-Path $base 'copy.staging')
+                OldRoot           = (Join-Path $base 'copy.old')
+                TargetDir         = $null
+                AppSubdir         = ''              # tree lives at the copy root (no app\ subdir)
+                ExeLeaf           = 'Traycer.exe'
+                ExeRelPath        = 'Traycer.exe'
+                AsarRelPath       = 'resources\app.asar'
+                ProcessName       = @('Traycer')
+                ShortcutIconRel   = $null           # no branded .ico in the copy; use source exe,0
+                TaskbarAumid      = $null           # non-packaged; exe icon is fine on the taskbar
+                NodeStrategy      = 'none'          # loose-file HTML edit needs no Node at all
+                NodeRelPath       = $null
+                WatcherRunName    = 'TraycerRtlPatchWatcher'
+                RemoveFromCopy    = @('resources\app-update.yml')   # neutralize electron-updater in the copy
+                AssertFuseOff     = $false          # we never touch app.asar, so its integrity fuse is moot
+                FuseScanRelPath   = $null
+                # Loose-file renderer: the app serves app://renderer/ from this on-disk dir.
+                RendererMode      = 'dir'
+                RendererDirRel    = 'resources\renderer'
+                UserDataDir       = (Join-Path $env:APPDATA 'Traycer')   # holds Code Cache + GPUCache
+                RendererPayloads  = @('desktop-rtl-patch.js')
+                MainProcessSpec   = $null
+                ServicesToHalt    = @()
+                TakeOwnershipDirs = @()
+                ExeHashPatch      = $null
+                CodeSign          = $null
+                UpdateHelper      = $null
+            }
+        }
         default { throw "[PROFILE] Unknown app id: $AppId" }
     }
 }
@@ -445,6 +500,7 @@ function Get-RtlDefaultConfig {
         apps = [ordered]@{
             codex    = Get-RtlDefaultAppConfig
             opencode = Get-RtlDefaultAppConfig
+            traycer  = Get-RtlDefaultAppConfig
         }
     }
 }
@@ -658,24 +714,35 @@ function Resolve-CodexSource {
     return $null
 }
 
-# Locate an OpenCode (NSIS, per-user) install. No Store/Appx; the exe and asar sit
-# under one of the profile's SourceRoots. AppDir is the whole install tree (we copy
-# it wholesale, including resources\app.asar.unpacked native modules). Signature is
-# the asar size+mtime (electron-updater overwrites app.asar in place on update).
-function Resolve-OpenCodeSource {
+# Locate a direct (NSIS-style, per-user) install: OpenCode or Traycer. No Store/Appx; the
+# exe and asar sit under one of the profile's SourceRoots. AppDir is the whole install tree
+# (copied wholesale, including resources\app.asar.unpacked native modules). Requires BOTH the
+# asar AND the exe so a replaced/missing exe is caught here, not later at node validation.
+# Signature keys off the profile Id: OpenCode keeps its asar size+mtime (electron-updater
+# overwrites app.asar in place); a fuse-flipped profile (Traycer) also folds in the exe
+# size+mtime, so an exe-only update that changes the fuse wire invalidates the copy.
+function Resolve-DirectSource {
     param($Profile = $script:ActiveProfile)
     $roots = @($Profile.SourceRoots) | Where-Object { $_ -and (Test-Path $_) }
     foreach ($r in $roots) {
         $asar = Join-Path $r $Profile.AsarRelPath
         if (-not (Test-Path $asar)) { continue }
         $exe = Join-Path $r $Profile.ExeLeaf
+        if (-not (Test-Path $exe)) { continue }   # both asar AND exe must exist
         $ver = $null
-        if (Test-Path $exe) { try { $ver = (Get-Item $exe).VersionInfo.ProductVersion } catch {} }
+        try { $ver = (Get-Item $exe).VersionInfo.ProductVersion } catch {}
         $asarItem = Get-Item $asar
         if (-not $ver) { $ver = $asarItem.LastWriteTimeUtc.ToString('yyyyMMddHHmmss') }
+        $sig = "$($Profile.Id):$($asarItem.Length)-$($asarItem.LastWriteTimeUtc.Ticks)"
+        if ($Profile.RendererMode -eq 'dir' -and $Profile.RendererDirRel) {
+            # We patch the LOOSE renderer index.html, not the asar - fold it in so a
+            # renderer-only app update still invalidates the copy and re-patches.
+            $idx = Join-Path (Join-Path $r $Profile.RendererDirRel) 'index.html'
+            if (Test-Path $idx) { $ii = Get-Item $idx; $sig += "-$($ii.Length)-$($ii.LastWriteTimeUtc.Ticks)" }
+        }
         return [pscustomobject]@{
             Type = 'Direct'; Version = [string]$ver
-            Signature = "opencode:$($asarItem.Length)-$($asarItem.LastWriteTimeUtc.Ticks)"
+            Signature = $sig
             AppDir = $r; AsarPath = $asar; Writable = $true
         }
     }
@@ -685,7 +752,7 @@ function Resolve-OpenCodeSource {
 # Resolve the source for the ACTIVE app (dispatches to the app-specific resolver).
 function Resolve-RtlSource {
     param($Profile = $script:ActiveProfile)
-    if ($Profile.Id -eq 'opencode') { return Resolve-OpenCodeSource -Profile $Profile }
+    if ($Profile.Id -eq 'opencode' -or $Profile.Id -eq 'traycer') { return Resolve-DirectSource -Profile $Profile }
     return Resolve-CodexSource
 }
 
@@ -702,7 +769,9 @@ function Test-CodexSource {
         try { $hdr = New-Object byte[] 4; [void]$fs.Read($hdr, 0, 4) } finally { $fs.Dispose() }
         if ([System.BitConverter]::ToUInt32($hdr, 0) -ne 4) { throw 'unexpected asar header' }
     } catch { throw "[LAYOUT] $name app.asar is not a readable asar: $($_.Exception.Message)" }
-    if (-not (Resolve-RtlNode -AsarPath $Source.AsarPath -Profile $Profile)) {
+    # A loose-file renderer (RendererMode 'dir') is patched with plain PowerShell - no Node,
+    # no asar edit - so only require a Node runtime for the asar-injection profiles.
+    if ($Profile.NodeStrategy -ne 'none' -and -not (Resolve-RtlNode -AsarPath $Source.AsarPath -Profile $Profile)) {
         $where = if ($Profile.NodeStrategy -eq 'electron-as-node') { "$($Profile.ExeLeaf) (run as Node)" } else { 'resources\cua_node\bin\node.exe' }
         throw "[NODE] $name Node runtime ($where) was not found; the app may be incompletely installed or its layout changed."
     }
@@ -803,6 +872,21 @@ function Invoke-AsarInject {
 function Update-CodexRtlConfigAsset {
     param([string]$AppId = 'codex', [switch]$AllowExternalNodeFallback)
     $prof = Get-RtlProfile $AppId
+    if ($prof.RendererMode -eq 'dir') {
+        # Loose-file renderer: just overwrite the config asset next to the payload (no Node,
+        # no asar). The config <script> tag is already in index.html from the build inject.
+        $rendererDir = Join-RtlTree $prof.CopyRoot $prof.RendererDirRel
+        $cfgAsset = Join-Path $rendererDir ('assets\' + $script:RtlDirConfigName)
+        if (-not (Test-Path (Join-Path $rendererDir 'index.html'))) { throw '[LAYOUT] Patched copy renderer not found; install first.' }
+        Assert-RtlWriteAllowed -Profile $prof -Path $cfgAsset | Out-Null
+        $cfgJs = Build-RtlConfigAsset -AppId $AppId
+        try {
+            Copy-Item -LiteralPath $cfgJs -Destination $cfgAsset -Force
+            Write-RtlLog "config asset (dir) updated: $cfgAsset"
+            Set-RtlConfigApplied
+        } finally { Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
+        return
+    }
     $liveAsar = Join-Path $prof.CopyRoot $prof.AsarRelPath
     if (-not (Test-Path $liveAsar)) { throw '[LAYOUT] Patched copy asar not found; install first.' }
     Assert-RtlWriteAllowed -Profile $prof -Path $liveAsar | Out-Null
@@ -887,6 +971,103 @@ function Test-RtlInjection {
     if (-not $res.ok) { throw "[VERIFY] Post-patch verification failed: $($res.reason)" }
     Write-RtlLog "verify: renderer=$($res.renderer) payloadSha256=$($res.payloadSha256) asarSha256=$($res.asarSha256)"
     return $res
+}
+
+# ------------------------------------------------- loose-file renderer inject
+# For apps whose renderer is served from a plain on-disk directory (RendererMode 'dir',
+# e.g. Traycer's app://renderer/ -> resources\renderer\), we never touch app.asar or the
+# exe. Inject with plain text editing: drop the payload (+ config) into <renderer>\assets\
+# and add the two <script> tags to <renderer>\index.html before the app's own bundle. No
+# Node, no fuse concerns. Same payload asset names as the asar path, so nothing else changes.
+$script:RtlDirPayloadName = 'desktop-rtl-patch.js'
+$script:RtlDirConfigName  = 'desktop-rtl-config.js'
+
+function Get-RtlRendererDir {
+    param($Profile = $script:ActiveProfile, [string]$Root = $script:CopyRoot)
+    if (-not $Profile.RendererDirRel) { return $null }
+    return (Join-RtlTree $Root $Profile.RendererDirRel)
+}
+
+# Locate the app's OWN entry module bundle <script> tag in the renderer HTML: a
+# <script type="module" src="./assets/<hash>.js"> that is NOT one of our injected
+# desktop-rtl assets. Order-independent (type/src in any order) and tolerant of a
+# query/hash suffix on the src. Returns the whole-tag regex Match (with .Index), or $null.
+function Find-RtlAppBundleMatch {
+    param([string]$Html)
+    foreach ($st in [regex]::Matches($Html, '<script\b[^>]*>', 'IgnoreCase')) {
+        $tag = $st.Value
+        if ($tag -notmatch '(?i)\btype\s*=\s*["'']module["'']') { continue }
+        $sm = [regex]::Match($tag, '(?i)\bsrc\s*=\s*["''](\./assets/[^"''?#]+\.js)(?:[?#][^"'']*)?["'']')
+        if (-not $sm.Success) { continue }
+        if ($sm.Groups[1].Value -match '(?i)desktop-rtl') { continue }   # never anchor to our own tag
+        return $st
+    }
+    return $null
+}
+
+# Regex that matches one of OUR injected <script> tags by asset name, tolerant of a
+# query/hash suffix and either quote style. $whole adds the closing </script>.
+function Get-RtlDirTagRegex {
+    param([string]$Name, [switch]$Whole)
+    $re = '<script\b[^>]*\bsrc\s*=\s*["''][^"'']*' + [regex]::Escape($Name) + '(?:[?#][^"'']*)?["''][^>]*>'
+    if ($Whole) { $re += '\s*</script>' }
+    return $re
+}
+
+function Invoke-RtlDirInject {
+    param([string]$RendererDir, $Profile, [string]$PatchJs, [string]$ConfigJs)
+    $index    = Join-Path $RendererDir 'index.html'
+    $assets   = Join-Path $RendererDir 'assets'
+    $payloadDest = Join-Path $assets $script:RtlDirPayloadName
+    $configDest  = Join-Path $assets $script:RtlDirConfigName
+    # Guard EVERY write target (index.html + both asset copies) before touching anything.
+    Assert-RtlWriteAllowed -Profile $Profile -Path $index       | Out-Null
+    Assert-RtlWriteAllowed -Profile $Profile -Path $payloadDest  | Out-Null
+    if ($ConfigJs) { Assert-RtlWriteAllowed -Profile $Profile -Path $configDest | Out-Null }
+    if (-not (Test-Path -LiteralPath $index))  { throw "[LAYOUT] renderer index.html not found: $index" }
+    if (-not (Test-Path -LiteralPath $assets)) { throw "[LAYOUT] renderer assets dir not found: $assets" }
+
+    # Drop the payload (+ optional config) next to the app's own assets.
+    Copy-Item -LiteralPath $PatchJs -Destination $payloadDest -Force
+    if ($ConfigJs) { Copy-Item -LiteralPath $ConfigJs -Destination $configDest -Force }
+
+    $html = [IO.File]::ReadAllText($index)
+    # Strip any prior injection (idempotent / self-correcting), then re-insert exactly once.
+    $html = [regex]::Replace($html, (Get-RtlDirTagRegex $script:RtlDirPayloadName -Whole), '', 'IgnoreCase')
+    $html = [regex]::Replace($html, (Get-RtlDirTagRegex $script:RtlDirConfigName  -Whole), '', 'IgnoreCase')
+    $payloadTag = '<script type="module" crossorigin src="./assets/' + $script:RtlDirPayloadName + '"></script>'
+    $configTag  = '<script src="./assets/' + $script:RtlDirConfigName + '"></script>'   # classic: runs before the module payload
+    $insert = $(if ($ConfigJs) { $configTag } else { '' }) + $payloadTag
+    # Insert before the app's own module bundle, else before </head>, else prepend.
+    $m = Find-RtlAppBundleMatch $html
+    if ($m) {
+        $html = $html.Substring(0, $m.Index) + $insert + $html.Substring($m.Index)
+    } elseif ($html -match '(?i)</head>') {
+        $html = [regex]::Replace($html, '(?i)</head>', $insert + '</head>', 1)
+    } else {
+        $html = $insert + $html
+    }
+    [IO.File]::WriteAllText($index, $html, (New-Object Text.UTF8Encoding $false))
+    Write-RtlLog "dir-inject: patched $index (+ payload$(if($ConfigJs){'+config'}) in assets)"
+}
+
+function Test-RtlDirInjection {
+    param([string]$RendererDir)
+    $index  = Join-Path $RendererDir 'index.html'
+    $asset  = Join-Path $RendererDir ('assets\' + $script:RtlDirPayloadName)
+    if (-not (Test-Path -LiteralPath $index)) { throw "[VERIFY] renderer index.html missing: $index" }
+    if (-not (Test-Path -LiteralPath $asset)) { throw "[VERIFY] payload asset missing from renderer: $asset" }
+    $html = [IO.File]::ReadAllText($index)
+    $tagRe = Get-RtlDirTagRegex $script:RtlDirPayloadName
+    $tagM = [regex]::Match($html, $tagRe, 'IgnoreCase')
+    if (-not $tagM.Success) { throw '[VERIFY] payload <script> tag missing from renderer index.html' }
+    # Exactly one payload tag (idempotency guard).
+    if (([regex]::Matches($html, $tagRe, 'IgnoreCase')).Count -ne 1) { throw '[VERIFY] payload <script> tag is duplicated' }
+    # The payload tag must precede the app's own bundle so the global is set in time.
+    $bundle = Find-RtlAppBundleMatch $html
+    if ($bundle -and $tagM.Index -gt $bundle.Index) { throw '[VERIFY] payload tag is after the app bundle' }
+    Write-RtlLog "verify(dir): payload present in $index"
+    return $true
 }
 
 function Invoke-AtomicSwap {
@@ -1130,10 +1311,18 @@ function Export-CodexRtlDiagnostics {
             "shortcutDesk  = $(Test-Path $script:ShortcutDesktop)"
         ) -join "`r`n"
         & $writeSan 'environment.txt' $env
-        # live injection report
+        # live injection report (branch on renderer mode: dir profiles have no asar payload)
         try {
-            $liveAsar = Join-Path $script:CopyRoot $script:ActiveProfile.AsarRelPath
-            if (Test-Path $liveAsar) { $inj = Test-RtlInjection -AsarPath $liveAsar -AllowExternalNodeFallback; & $writeSan 'injection.json' ($inj | ConvertTo-Json) }
+            if ($script:ActiveProfile.RendererMode -eq 'dir') {
+                $rd = Get-RtlRendererDir -Profile $script:ActiveProfile -Root $script:CopyRoot
+                if ($rd -and (Test-Path (Join-Path $rd 'index.html'))) {
+                    Test-RtlDirInjection -RendererDir $rd | Out-Null
+                    & $writeSan 'injection.json' (@{ ok = $true; mode = 'dir'; renderer = $rd } | ConvertTo-Json)
+                }
+            } else {
+                $liveAsar = Join-Path $script:CopyRoot $script:ActiveProfile.AsarRelPath
+                if (Test-Path $liveAsar) { $inj = Test-RtlInjection -AsarPath $liveAsar -AllowExternalNodeFallback; & $writeSan 'injection.json' ($inj | ConvertTo-Json) }
+            }
         } catch { & $writeSan 'injection.error.txt' $_.Exception.Message }
         # capped logs (last ~10MB total, newest first)
         $logDst = Join-Path $work 'logs'; New-Item -ItemType Directory -Force -Path $logDst | Out-Null
@@ -1259,7 +1448,13 @@ function Invoke-CodexRtlUpdate {
         # PATCH (e.g. after a tool upgrade the reseeded baseline carries the previous
         # payload). Re-verify it; on any failure fall through to a rebuild.
         if ($stagingReady) {
-            try { Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null }
+            try {
+                if ($p.RendererMode -eq 'dir') {
+                    Test-RtlDirInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) | Out-Null
+                } else {
+                    Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
+                }
+            }
             catch {
                 Write-RtlLog "Staging matches the source version but failed verification ($($_.Exception.Message)); rebuilding it."
                 Remove-Item -LiteralPath $stagingSig -Force -ErrorAction SilentlyContinue
@@ -1300,27 +1495,34 @@ function Invoke-CodexRtlUpdate {
                 $victim = Join-RtlTree $stagingApp $rel
                 if (Test-Path $victim) { try { Remove-Item -LiteralPath $victim -Force; Write-RtlLog "Removed from copy: $rel" } catch { Write-RtlLog "could not remove $rel from copy: $($_.Exception.Message)" } }
             }
-            # Read-only guard: some Electron builds pin the asar via the integrity fuse.
-            # We never modify the exe, so if that fuse is ON we cannot produce a working
-            # copy - fail clearly instead of shipping a broken one. (OpenCode ships with
-            # it OFF, so this passes; it protects against a future build turning it on.)
-            if ($p.AssertFuseOff) {
-                $fuseScan = if ($p.FuseScanRelPath) { Join-Path $script:Staging $p.FuseScanRelPath } else { $stagingExe }
-                Assert-RtlAsarFuseOff -Node (Resolve-RtlNode -AsarPath $stagingAsar -Profile $p) -ScanPath $fuseScan
-            }
             Set-RtlStep 'inject' 70 $true
             # Bake the current settings alongside the payload so a fresh copy already
             # reflects them; later tweaks use Update-CodexRtlConfigAsset (no rebuild).
             $cfgJs = Build-RtlConfigAsset -AppId $p.Id
             try {
-                Invoke-AsarInject -AsarPath $stagingAsar -PatchJs $patchJs -ConfigJs $cfgJs -AllowExternalNodeFallback:$AllowExternalNodeFallback
+                if ($p.RendererMode -eq 'dir') {
+                    # Loose-file renderer (Traycer): edit resources\renderer\index.html + drop the
+                    # payload/config into its assets\. No asar edit, no exe/fuse touch, no Node.
+                    Invoke-RtlDirInject -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) -Profile $p -PatchJs $patchJs -ConfigJs $cfgJs
+                    Set-RtlStep 'verify' 82 $true
+                    Test-RtlDirInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) | Out-Null
+                } else {
+                    # asar-served renderer (Codex/OpenCode). A read-only guard refuses to proceed
+                    # if the copy's asar-integrity fuse is ON (these builds ship it off, so it
+                    # passes; it protects against a future build turning it on). Original untouched.
+                    if ($p.AssertFuseOff) {
+                        $fuseScan = if ($p.FuseScanRelPath) { Join-Path $script:Staging $p.FuseScanRelPath } else { $stagingExe }
+                        Assert-RtlAsarFuseOff -Node (Resolve-RtlNode -AsarPath $stagingAsar -Profile $p) -ScanPath $fuseScan
+                    }
+                    Invoke-AsarInject -AsarPath $stagingAsar -PatchJs $patchJs -ConfigJs $cfgJs -AllowExternalNodeFallback:$AllowExternalNodeFallback
+                    # Gate: a bad injection must never reach the atomic swap. Verify staging
+                    # BEFORE we record the signature that would let a later run skip rebuild.
+                    Set-RtlStep 'verify' 82 $true
+                    Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
+                }
             } finally {
                 Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue
             }
-            # Gate: a bad injection must never reach the atomic swap. Verify staging
-            # BEFORE we record the signature that would let a later run skip rebuild.
-            Set-RtlStep 'verify' 82 $true
-            Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
             Set-Content -LiteralPath $stagingSig -Value $buildSig -Encoding UTF8 -NoNewline
             Remove-Item -LiteralPath $buildingFlag -Force -ErrorAction SilentlyContinue
             Write-RtlLog 'Staging build complete and verified.'
@@ -1348,7 +1550,10 @@ function Invoke-CodexRtlUpdate {
         # hashes. Best-effort: a transient read-lock here should not fail a good
         # install (the next watcher tick re-verifies), so we log and proceed.
         $verify = $null
-        try { $verify = Test-RtlInjection -AsarPath $liveAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback }
+        try {
+            if ($p.RendererMode -eq 'dir') { Test-RtlDirInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $script:CopyRoot) | Out-Null }
+            else { $verify = Test-RtlInjection -AsarPath $liveAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback }
+        }
         catch { Write-RtlLog "WARNING: post-swap verification issue: $($_.Exception.Message)" }
         Write-RtlState @{ sourceSignature = $src.Signature; codexVersion = $src.Version; sourcePath = $src.AppDir; payloadSha256 = $verify.payloadSha256; asarSha256 = $verify.asarSha256 }
         Set-RtlConfigApplied   # the fresh build baked the current config.json
@@ -1457,15 +1662,43 @@ function Get-RtlWatchCommand {
     return "`"$ps`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchScript`" -App $appId -Loop"
 }
 
+# Extract an exact "-App <id>" / "-App=<id>" token value from a command line (quote-aware),
+# or $null if absent. Exact-token match avoids catching "--App" or a substring.
+function Get-RtlCommandAppId {
+    param([string]$CommandLine)
+    if (-not $CommandLine) { return $null }
+    $tokens = @()
+    foreach ($m in ([regex]'"([^"]*)"|(\S+)').Matches($CommandLine)) {
+        if ($m.Groups[1].Success) { $tokens += $m.Groups[1].Value } else { $tokens += $m.Groups[2].Value }
+    }
+    for ($i = 0; $i -lt $tokens.Count; $i++) {
+        $t = $tokens[$i]
+        if ($t -match '(?i)^-App=(.+)$') { return $matches[1] }
+        if ($t -match '(?i)^-App$' -and ($i + 1) -lt $tokens.Count) { return $tokens[$i + 1] }
+    }
+    return $null
+}
+
 # Predicate: does a process command line belong to the ACTIVE app's watcher/tray?
-# OpenCode is identified by "-App opencode"; codex by the watcher/tray markers with
-# no opencode marker, so per-app stop never touches the other app's watcher.
+# Generalized for any number of apps and safe for the shared unified agent:
+#   1. it MUST carry a known RTL watcher/tray marker (so an unrelated process that merely
+#      contains "-App traycer" is never matched), THEN
+#   2. if it has an exact "-App <id>" token, own it iff <id> equals the active app; ELSE
+#   3. a marker-bearing command with NO "-App" is a genuine legacy Codex-era command - owned
+#      by codex ONLY, and ONLY when its script path is under the LEGACY CodexRtlPatch\bin. The
+#      neutral AgentBinDir is excluded, so the shared unified tray (also has no -App) is never
+#      stopped as if it were the per-app codex watcher.
 function Test-RtlWatchCommandLine {
     param([string]$CommandLine)
     if (-not $CommandLine) { return $false }
-    if ($script:ActiveProfile.Id -eq 'opencode') { return ($CommandLine -match '-App\s+opencode') }
-    # New names first; the old Codex-era names stay so upgrading evicts legacy watchers.
-    return (($CommandLine -match 'Watch-DesktopRtl|DesktopRtlTray|Desktop-RTL-Tray|Watch-CodexRtl|CodexRtlTray|Codex-RTL-Tray') -and ($CommandLine -notmatch '-App\s+opencode'))
+    if ($CommandLine -notmatch 'Watch-DesktopRtl|DesktopRtlTray|Desktop-RTL-Tray|Watch-CodexRtl|CodexRtlTray|Codex-RTL-Tray') { return $false }
+    $id = $script:ActiveProfile.Id
+    $cmdApp = Get-RtlCommandAppId $CommandLine
+    if ($cmdApp) { return ($cmdApp -ieq $id) }
+    if ($id -ne 'codex') { return $false }
+    $sp = Get-RtlCommandScriptPath $CommandLine
+    if (-not $sp) { return $false }
+    return (Test-RtlPathUnderRoot -Path $sp -Roots @((Join-Path $env:LOCALAPPDATA 'CodexRtlPatch\bin')))
 }
 
 function Register-CodexRtlWatcher {
@@ -1667,7 +1900,7 @@ function Get-RtlInstalledApps {
     $save = $script:ActiveProfile.Id
     $ids = @()
     try {
-        foreach ($id in @('codex', 'opencode')) {
+        foreach ($id in @('codex', 'opencode', 'traycer')) {
             Set-RtlActiveApp $id | Out-Null
             $copyExe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
             if (Test-Path $copyExe) { $ids += $id }

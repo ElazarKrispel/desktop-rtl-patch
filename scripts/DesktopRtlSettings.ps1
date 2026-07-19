@@ -2,12 +2,12 @@
 # Per-app settings dialog for the Desktop RTL patch (WinForms, Hebrew, RTL). Reads/writes
 # the per-app config.json via the shared library and applies changes to the live copy with
 # Update-CodexRtlConfigAsset (no full rebuild). No admin. -App selects which app's settings
-# to edit (codex|opencode). The two GLOBAL toggles (auto-update / tool-update checks) live
+# to edit (codex|opencode|traycer). The two GLOBAL toggles (auto-update / tool-update checks) live
 # in the unified tray, not here.
 #
 # -SelfTest builds the form without showing it (headless construction check).
 
-param([ValidateSet('codex', 'opencode')][string]$App = 'codex', [switch]$NoRelaunch, [switch]$SelfTest)
+param([ValidateSet('codex', 'opencode', 'traycer')][string]$App = 'codex', [switch]$NoRelaunch, [switch]$SelfTest)
 
 # --- Relaunch under Windows PowerShell 5.1 + STA if needed -------------------
 if (-not $SelfTest -and -not $NoRelaunch) {
