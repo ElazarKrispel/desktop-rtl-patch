@@ -1,7 +1,7 @@
-// Codex Desktop RTL patch
+// Desktop RTL patch
 // ------------------------
 // Adds smart bidirectional (RTL) handling for Hebrew/Arabic text in the
-// OpenAI Codex desktop app, while keeping code and math strictly left-to-right.
+// supported desktop apps, while keeping code and math strictly left-to-right.
 //
 // Strategy (v1.3.0):
 //   * Prose blocks that contain Hebrew/Arabic get a REAL `dir="rtl"` attribute.
@@ -280,6 +280,7 @@
   }
 
   function applyDir(el, dir) {
+    if (el.shadowRoot != null) return;
     var owned = el.hasAttribute(MARK);
     if (!dir) {
       if (owned) { el.removeAttribute("dir"); el.removeAttribute(MARK); }
@@ -406,6 +407,7 @@
   function processInputs(root) {
     qsa(root, INPUT_SEL).forEach(function (el) {
       if (inCode(el)) return;
+      if (el.matches('[data-lexical-editor="true"]') || el.closest('[data-lexical-editor="true"]')) return;
       var text = el.value || el.textContent || el.innerText || "";
       var dir = hasRTL(text) ? "rtl" : "ltr";
       if (el.getAttribute("dir") !== dir) el.setAttribute("dir", dir);
@@ -452,7 +454,8 @@
       css.push(".katex,.katex-display,mjx-container{unicode-bidi:isolate!important;direction:ltr!important}");
     }
     if (S_CODEISO) {
-      css.push(':where(pre,code,kbd,samp,[class*="language-"],[class*="hljs"],.cm-editor,.monaco-editor,.xterm){direction:ltr!important;text-align:left!important}');
+      css.push(':where(pre,code,kbd,samp,[class*="language-"],[class*="hljs"],.cm-editor,.monaco-editor,.xterm,diffs-container){direction:ltr!important;text-align:left!important}');
+      css.push("diffs-container{unicode-bidi:isolate!important}");
       css.push("code{unicode-bidi:isolate!important}");
       css.push("pre{unicode-bidi:isolate!important}");
     }

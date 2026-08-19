@@ -15,6 +15,7 @@ Supported apps:
 | **OpenAI Codex desktop** (new builds are branded **ChatGPT**) | Microsoft Store | "Codex (RTL)" |
 | **OpenCode desktop** (anomalyco / SST) | opencode.ai installer | "OpenCode (RTL)" |
 | **Traycer desktop** (traycer.ai) | traycer.ai installer | "Traycer (RTL)" |
+| **T3 Code desktop** (t3.chat) | T3 Code Alpha installer | "T3 Code (RTL)" |
 
 These apps show all chat text left-to-right, which makes Hebrew/Arabic look broken. This tool
 makes Hebrew/Arabic **prose** flow right-to-left (correct alignment and punctuation), while
@@ -27,8 +28,8 @@ It installs a **separate patched copy** per app; your original installs are neve
 ## התקנה מהירה (עברית) 🚀
 
 1. ודאו שהאפליקציה שרוצים לתקן מותקנת: **Codex** מה-Microsoft Store (בגרסאות החדשות היא
-   כבר נקראת **ChatGPT**), **OpenCode**, או **Traycer**.
-2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.2.0.zip)**,
+   כבר נקראת **ChatGPT**), **OpenCode**, **Traycer**, או **T3 Code**.
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.3.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
 3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית. בוחרים את האפליקציה
    בבורר שלמעלה (Codex, OpenCode או Traycer), לוחצים **"התקן"** וממתינים כדקה.
@@ -36,7 +37,7 @@ It installs a **separate patched copy** per app; your original installs are neve
 
 > בלי הרשאות מנהל ובלי להתקין Node.js. ההעתקה הראשונה לוקחת כדקה, ומכאן זה מתעדכן לבד.
 > תמיד פותחים דרך קיצור הדרך עם ה-(RTL); האפליקציה המקורית נשארת LTR ולא משתנה.
-> אפשר להתקין לשתי האפליקציות במקביל, כל אחת מנוהלת בנפרד.
+> אפשר להתקין לכמה אפליקציות במקביל, וכל אחת מנוהלת בנפרד.
 
 ## Requirements
 
@@ -51,12 +52,12 @@ It installs a **separate patched copy** per app; your original installs are neve
 
 ## Install (the easy way)
 
-1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.2.0.zip)** and extract it.
+1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.3.0.zip)** and extract it.
 2. Double-click **`Install-Desktop-RTL.vbs`** (or `Install-Desktop-RTL.cmd`). A small window opens.
 3. Pick the app at the top (Codex is the default), click **Install** and wait about a minute.
 
 It builds a patched copy (Codex under `%LOCALAPPDATA%\OpenAI\CodexRtl`, OpenCode under
-`%LOCALAPPDATA%\RtlPatch\opencode`, Traycer under `%LOCALAPPDATA%\RtlPatch\traycer`), adds an
+`%LOCALAPPDATA%\RtlPatch\opencode`, Traycer under `%LOCALAPPDATA%\RtlPatch\traycer`, and T3 Code under `%LOCALAPPDATA%\RtlPatch\t3code`), adds an
 **"(RTL)" shortcut** to the Desktop and Start menu, and starts a background agent that keeps
 the copy patched across app updates. **Your original installs are never touched.**
 
@@ -70,10 +71,10 @@ the copy patched across app updates. **Your original installs are never touched.
 For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.2.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.3.0/install.ps1 | iex
 ```
 
-This downloads the same code, pinned to the `v2.2.0` tag (verified against a published
+This downloads the same code, pinned to the `v2.3.0` tag (verified against a published
 SHA-256 checksum), and opens the installer window. Running a remote script means trusting it;
 if you are unsure, prefer the ZIP download above (it is exactly the same code, and you can
 read it first).
@@ -82,11 +83,11 @@ Prefer no window at all? Add `RTL_SILENT` (and optionally `RTL_APP`) on the same
 whole install runs headless in the terminal:
 
 ```powershell
-$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.2.0/install.ps1 | iex
-$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.2.0/install.ps1 | iex
+$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.3.0/install.ps1 | iex
+$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.3.0/install.ps1 | iex
 ```
 
-Headless CLI (all take `-App codex|opencode|traycer`, default codex):
+Headless CLI (all take `-App codex|opencode|traycer|t3code`, default codex):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-DesktopRtl.ps1 -App opencode
@@ -156,12 +157,24 @@ original apps are unaffected.
   no executable edit at all**. The copy's `app.asar` and `Traycer.exe` stay **byte-identical** to
   the original, so Traycer's asar-integrity setting is irrelevant and no Node is needed.
 
-**All three**, and unlike other RTL patches:
+**T3 Code** (current Alpha layout):
+
+* The renderer is header-listed under `app.asar.unpacked`, so new adjacent asset files are not
+  visible through Electron's asar path. The config and payload are therefore embedded inline,
+  exactly once, in the copy's renderer `index.html`. Neither `app.asar` nor the executable is edited,
+  and no Node runtime is needed.
+* The supported layout is the v0.0.33-era loose renderer. Builds containing
+  `resources\server.asar` use a newer layout and fail clearly without changing anything.
+* T3 Code shares a single-instance lock with its original. If the original is open, launching the
+  RTL copy may focus the original. Launching either copy may also become the current `t3code://`
+  protocol handler. WSL-only mode and `VITE_DEV_SERVER_URL` are not supported.
+
+**All supported apps**, and unlike other RTL patches:
 
 * **The original install is never modified** - only a separate copy is ever written, guarded by a
   `[SAFETY]` check that refuses to touch anything outside the tool's own staging/copy folders. For
   Codex and OpenCode the copy's `app.asar` is the only edited file (their asar-integrity fuse ships
-  disabled); for Traycer only a loose renderer HTML file is edited (no binary touched at all).
+  disabled); for Traycer and T3 Code only renderer HTML in the copy is edited.
   Other RTL patches flip a fuse on the **original signed binary** and patch the install in place;
   this tool never touches the original.
 
@@ -221,23 +234,24 @@ src/desktop-rtl-patch.js          injected renderer script (the RTL fix, configu
 scripts/Install-DesktopRtlGui.ps1 graphical installer (WinForms, Hebrew, app selector)
 scripts/DesktopRtlTray.ps1        system-tray app (auto-update + menu, subsumes the watcher)
 scripts/DesktopRtlSettings.ps1    settings dialog (WinForms, Hebrew): direction, surfaces, font
-scripts/Install-DesktopRtl.ps1    headless installer (advanced), -App codex|opencode|traycer
-scripts/Update-DesktopRtl.ps1     force a re-patch now, -App codex|opencode|traycer
+scripts/Install-DesktopRtl.ps1    headless installer, -App codex|opencode|traycer|t3code
+scripts/Update-DesktopRtl.ps1     force a re-patch, -App codex|opencode|traycer|t3code
 scripts/Uninstall-DesktopRtl.ps1  remove the copy, shortcuts, tray/watcher, state
 scripts/Watch-DesktopRtl.ps1      background watcher (event-driven auto-update, no admin)
 scripts/Build-Release.ps1         package a checksummed release asset (maintainer helper)
 scripts/lib/desktop-rtl-lib.ps1   shared logic: profiles, resolve, staging+swap, verify, watcher
 scripts/lib/asar-edit.mjs         surgical, dependency-free asar editor + verifier (Node)
 test/bidi-harness.html            visual bidi test cases
+test/renderer-injection.harness.ps1  renderer injection regression harness
 ```
 
 ## Disclaimer
 
-Unofficial community project, not affiliated with or endorsed by OpenAI or by OpenCode's
-makers (anomalyco / SST). It was built for accessibility: Hebrew and Arabic right-to-left
+Unofficial community project, not affiliated with or endorsed by OpenAI, OpenCode's makers,
+Traycer, or T3 Code. It was built for accessibility: Hebrew and Arabic right-to-left
 support, which these apps do not yet provide. It modifies **local copies** of the apps and
 does **not** redistribute any of their code; it does not bypass authentication, payment, or
 access controls, and it never changes the original installs. Modifying an app may not be
 permitted by its terms of service, so please review them and use this at your own discretion
-and risk. "Codex", "ChatGPT" and "OpenCode" are trademarks of their respective owners; this is
+and risk. "Codex", "ChatGPT", "OpenCode", "Traycer", and "T3 Code" are trademarks of their respective owners; this is
 an independent project that only describes its own patch.

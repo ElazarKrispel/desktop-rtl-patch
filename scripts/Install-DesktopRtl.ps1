@@ -2,7 +2,7 @@
 .SYNOPSIS
     Install the Desktop RTL patch (patched copy + auto-update watcher), headless.
 .DESCRIPTION
-    Builds a patched COPY of the selected app (-App codex|opencode|traycer; the original
+    Builds a patched COPY of the selected app (-App codex|opencode|traycer|t3code; the original
     install is only read, never modified), creates "(RTL)" Start-menu and Desktop
     shortcuts, and registers a per-user logon watcher that re-applies the patch
     whenever the app updates - safely, while the copy is closed, with no
@@ -15,7 +15,7 @@
     Not used by the end-user GUI (which requires the bundled Node).
 #>
 [CmdletBinding()]
-param([ValidateSet('codex','opencode','traycer')][string]$App = 'codex', [switch]$NoWatcher, [switch]$AllowExternalNodeFallback)
+param([ValidateSet('codex','opencode','traycer','t3code')][string]$App = 'codex', [switch]$NoWatcher, [switch]$AllowExternalNodeFallback)
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -41,7 +41,7 @@ if (-not $NoWatcher) {
     Write-Host "[*] Setting up the unified background agent (one tray for all apps)..." -ForegroundColor Cyan
     # Deploy the single neutral agent (migrate toggles, transactional bin swap, verify
     # readiness, register autostart, evict any legacy per-app watchers). Installing
-    # EITHER app registers/refreshes the one agent, which then manages every installed
+    # Any app registers/refreshes the one agent, which then manages every installed
     # app. It stops any resident tray before the swap and starts a fresh one, so a newly
     # installed second app is picked up immediately.
     Install-RtlAgent -RepoRoot $repoRoot

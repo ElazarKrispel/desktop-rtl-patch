@@ -168,7 +168,7 @@ $pickCombo.Width = 160
 $pickCombo.Margin = New-Object System.Windows.Forms.Padding(3, 4, 3, 3)
 # ComboBox item index -> app id (single source of truth). Combo labels derive from the
 # profiles' DisplayName so adding an app is a one-line change here, not a label edit too.
-$script:AppIds = @('codex', 'opencode', 'traycer')
+$script:AppIds = @(Get-RtlAppIds)
 foreach ($id in $script:AppIds) { [void]$pickCombo.Items.Add((Get-RtlProfile $id).DisplayName) }
 $pickCombo.SelectedIndex = 0
 $pickPanel.Controls.AddRange(@($pickLabel, $pickCombo))
@@ -473,6 +473,10 @@ $btnPrimary.Add_Click({
             'install' { Start-Install }
             'recheck' { Update-Buttons }
             'open' {
+                if (Test-RtlSharedInstanceConflict) {
+                    $answer = [System.Windows.Forms.MessageBox]::Show("הגרסה המקורית של $($script:ActiveProfile.DisplayName) פתוחה. בגלל מגבלת מופע יחיד, פתיחת עותק ה-RTL עלולה להתמקד במקור במקום. להמשיך בכל זאת?", 'Desktop RTL', 'YesNo', 'Warning')
+                    if ($answer -ne 'Yes') { return }
+                }
                 if (-not (Start-RtlCopyApp)) { [System.Windows.Forms.MessageBox]::Show('לא נמצא קובץ ההפעלה. נסה/י להתקין מחדש.', 'Desktop RTL', 'OK', 'Warning') | Out-Null }
             }
         }
