@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Continue'
 Set-RtlActiveApp $App
 Hide-RtlConsole   # background watcher: never show a console window
 
-# Per-app mutex so each app has exactly one watcher, but the two apps' watchers
+# Per-app mutex so each app has exactly one watcher, while different apps' watchers
 # coexist (they patch independent copies).
 $created = $false
 $mutex = New-Object System.Threading.Mutex($true, ('Local\' + $script:RunName), [ref]$created)
