@@ -1,6 +1,6 @@
 // asar-edit.mjs - surgical, dependency-free editor + verifier for an Electron ASAR.
-// App-agnostic: serves both Codex and OpenCode. Run by Codex's bundled node, or by
-// the app's own Electron exe as node (ELECTRON_RUN_AS_NODE=1 + ELECTRON_NO_ASAR=1 -
+// App-agnostic for the ASAR profiles (Codex and OpenCode). Run by Codex's bundled
+// node, or by the app's own Electron exe as node (ELECTRON_RUN_AS_NODE=1 + ELECTRON_NO_ASAR=1 -
 // the second is REQUIRED or Electron's fs shim reads app.asar as an archive).
 //
 // The Electron runtime loads resources\app.asar (it does NOT fall back to an unpacked

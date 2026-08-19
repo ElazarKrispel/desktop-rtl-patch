@@ -1,6 +1,6 @@
 ﻿# DesktopRtlTray.ps1
 # The UNIFIED background agent: ONE resident system-tray icon that manages EVERY
-# installed app ("Codex (RTL)" and/or "OpenCode (RTL)"). It subsumes the old per-app
+# installed supported app. It subsumes the old per-app
 # watchers: a hidden message pump keeps a NotifyIcon alive, an event-driven + polled
 # loop keeps each installed copy patched across app updates (never interrupting a
 # running copy), and a menu exposes per-app open / update / settings / diagnostics plus

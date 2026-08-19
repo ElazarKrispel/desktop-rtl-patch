@@ -152,7 +152,7 @@ foreach ($h in 0, 0, 0, 0, 0, 100, 0) {
 }
 $form.Controls.Add($root)
 
-# --- App picker (single screen serves both Codex and OpenCode) ---------------
+# --- App picker (single screen serves every supported profile) ---------------
 $pickPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 $pickPanel.FlowDirection = 'RightToLeft'
 $pickPanel.AutoSize = $true

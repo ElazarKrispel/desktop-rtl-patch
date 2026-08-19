@@ -189,7 +189,8 @@ original apps are unaffected.
   and click **"התקן מחדש"** (Reinstall); the new layout is supported.
 * **Will I lose my chats or need to log in again?** No. The copy and the original share the
   same account and conversations; the "(RTL)" app is just a patched copy of the same app.
-* **Do I need to install Node.js?** No. The patch uses a runtime bundled inside the app.
+* **Do I need to install Node.js?** No. Profiles that need Node use an app-provided runtime;
+  Traycer and T3 Code do not need Node for patching.
 * **A PowerShell window flashes when I use the `.cmd`.** That is just the launcher closing.
   Use `Install-Desktop-RTL.vbs` for no window at all.
 * **"... (RTL) is running."** Close it first (check the system tray), then try again.
