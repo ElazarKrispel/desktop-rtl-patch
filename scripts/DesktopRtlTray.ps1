@@ -231,7 +231,7 @@ $script:MenuAction = {
     $t = $s.Tag
     if (-not $t) { return }
     switch ($t.Action) {
-        'open'     { Invoke-AppAction $t.App { [void](Start-RtlCopyApp) } }
+        'open'     { Invoke-AppAction $t.App { if (Test-RtlSharedInstanceConflict) { Show-TrayBalloon 'לפני פתיחה' "הגרסה המקורית פתוחה; בגלל מגבלת מופע יחיד ייתכן שהיא תקבל מיקוד." 'Warning' }; [void](Start-RtlCopyApp) } }
         'update'   { Start-TrayPass -Apps @($t.App) -Force }
         'settings' { Open-AppSettings $t.App }
         'diag'     { Invoke-AppAction $t.App { $z = Export-CodexRtlDiagnostics; if ($z) { Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,`"$z`"" } } }
@@ -315,7 +315,8 @@ function Build-Watchers {
             Set-RtlActiveApp $id | Out-Null
             $src = $null; try { $src = Resolve-RtlSource } catch {}
             if ($src -and $src.Type -eq 'Direct' -and $src.AsarPath) {
-                $w = New-RtlSourceWatcher -WatchPath $src.AsarPath
+              foreach ($watchPath in @(Get-RtlSourceWatchPaths -Profile $script:ActiveProfile -Source $src)) {
+                $w = New-RtlSourceWatcher -WatchPath $watchPath
                 if ($w) {
                     # Do NOT rely on SynchronizingObject for every event path; each handler
                     # explicitly marshals to the UI thread via the hidden form.
@@ -325,6 +326,7 @@ function Build-Watchers {
                     $w.EnableRaisingEvents = $true
                     $script:Fsws += $w
                 }
+              }
             }
         }
     } finally { Set-RtlActiveApp $save | Out-Null }

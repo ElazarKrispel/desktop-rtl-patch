@@ -1,5 +1,5 @@
 # desktop-rtl-lib.ps1
-# Shared logic for the RTL patch (Codex + OpenCode): resolve the app install, build a
+# Shared logic for the multi-app RTL patch: resolve the app install, build a
 # patched copy via staging + atomic swap, manage the auto-update watcher, logging,
 # progress reporting and a single-instance lock.
 #
@@ -20,7 +20,7 @@
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.2.0'
+$script:PatchVersion  = '2.3.0'
 $script:SchemaVersion = 2
 
 # --- Agent-scoped globals (v2.1.0 unified tray agent) ------------------------
@@ -209,9 +209,11 @@ function Exit-RtlLock {
 # For copy-mode profiles every in-place field is $null, so the copy code path can never
 # reach an in-place operation. Paths currently mirror the module-level $script: vars.
 function Get-RtlProfile {
-    param([string]$AppId = 'codex')
-    switch ($AppId) {
-        'codex' {
+    param([string]$AppId = 'codex', [switch]$List)
+    # This catalog is the single source of truth for supported app ids. All callers
+    # that enumerate apps use Get-RtlAppIds, which derives directly from these keys.
+    $profiles = [ordered]@{
+        'codex' = {
             return [pscustomobject]@{
                 Id                = 'codex'
                 DisplayName       = 'Codex'
@@ -220,6 +222,7 @@ function Get-RtlProfile {
                 Mode              = 'copy'         # 'copy' | 'inplace'
                 RequiresElevation = $false
                 AppxName          = 'OpenAI.Codex'
+                SourceKind        = 'codex'
                 SourceRoots       = @()            # codex uses its own recursive resolver
                 StateDir          = (Join-Path $env:LOCALAPPDATA 'CodexRtlPatch')
                 CopyRoot          = (Join-Path $env:LOCALAPPDATA 'OpenAI\CodexRtl')
@@ -258,7 +261,7 @@ function Get-RtlProfile {
                 UpdateHelper      = $null
             }
         }
-        'opencode' {
+        'opencode' = {
             $base = Join-Path $env:LOCALAPPDATA 'RtlPatch\opencode'
             return [pscustomobject]@{
                 Id                = 'opencode'
@@ -268,6 +271,7 @@ function Get-RtlProfile {
                 Mode              = 'copy'
                 RequiresElevation = $false
                 AppxName          = $null          # NSIS per-user, no Store/Appx
+                SourceKind        = 'direct'
                 # VERIFIED root name is @opencode-aidesktop; keep the guessed names as fallbacks.
                 SourceRoots       = @(
                     (Join-Path $env:LOCALAPPDATA 'Programs\@opencode-aidesktop'),
@@ -304,7 +308,7 @@ function Get-RtlProfile {
                 UpdateHelper      = $null
             }
         }
-        'traycer' {
+        'traycer' = {
             # Traycer (traycerai/traycer) - Electron, shaped like OpenCode (exe at the tree
             # root, resources\app.asar + app.asar.unpacked + app-update.yml, no bundled node).
             # KEY DIFFERENCE (verified at runtime via CDP): Traycer does NOT serve its renderer
@@ -325,6 +329,7 @@ function Get-RtlProfile {
                 Mode              = 'copy'
                 RequiresElevation = $false
                 AppxName          = $null          # NSIS-style per-user, no Store/Appx
+                SourceKind        = 'direct'
                 SourceRoots       = @(
                     (Join-Path $env:LOCALAPPDATA 'Programs\Traycer')
                 )
@@ -359,8 +364,58 @@ function Get-RtlProfile {
                 UpdateHelper      = $null
             }
         }
-        default { throw "[PROFILE] Unknown app id: $AppId" }
+        't3code' = {
+            $base = Join-Path $env:LOCALAPPDATA 'RtlPatch\t3code'
+            return [pscustomobject]@{
+                Id                = 't3code'
+                DisplayName       = 'T3 Code'
+                ShortcutLabel     = 'T3 Code (RTL)'
+                ShortcutDesc      = 'T3 Code with Hebrew / RTL support'
+                Mode              = 'copy'
+                RequiresElevation = $false
+                AppxName          = $null
+                SourceKind        = 'direct'
+                SourceRoots       = @((Join-Path $env:LOCALAPPDATA 'Programs\t3code'))
+                StateDir          = $base
+                CopyRoot          = (Join-Path $base 'copy')
+                Staging           = (Join-Path $base 'copy.staging')
+                OldRoot           = (Join-Path $base 'copy.old')
+                TargetDir         = $null
+                AppSubdir         = ''
+                # ponytail: accept channel-specific exe leaves when stable/nightly support is added.
+                ExeLeaf           = 'T3 Code (Alpha).exe'
+                ExeRelPath        = 'T3 Code (Alpha).exe'
+                AsarRelPath       = 'resources\app.asar'
+                ProcessName       = @('T3 Code (Alpha)')
+                ShortcutIconRel   = $null
+                TaskbarAumid      = $null
+                NodeStrategy      = 'none'
+                NodeRelPath       = $null
+                WatcherRunName    = 'T3CodeRtlPatchWatcher'
+                RemoveFromCopy    = @('resources\app-update.yml')
+                AssertFuseOff     = $false
+                FuseScanRelPath   = $null
+                RendererMode      = 'inline'
+                RendererDirRel    = 'resources\app.asar.unpacked\apps\server\dist\client'
+                SharedSingleInstance = $true
+                UserDataDir       = (Join-Path $env:APPDATA 't3code')
+                RendererPayloads  = @('desktop-rtl-patch.js')
+                MainProcessSpec   = $null
+                ServicesToHalt    = @()
+                TakeOwnershipDirs = @()
+                ExeHashPatch      = $null
+                CodeSign          = $null
+                UpdateHelper      = $null
+            }
+        }
     }
+    if ($List) { return @($profiles.Keys) }
+    if (-not $profiles.Contains($AppId)) { throw "[PROFILE] Unknown app id: $AppId" }
+    return (& $profiles[$AppId])
+}
+
+function Get-RtlAppIds {
+    return @(Get-RtlProfile -List)
 }
 
 # The active app for this process. Engine functions that are app-specific read this.
@@ -495,14 +550,9 @@ function Get-RtlDefaultConfig {
     # Per-app RTL surfaces only. The two GLOBAL toggles (autoPatch, checkForToolUpdates)
     # moved to the unified agent's agent.json (Read/Write-RtlAgentConfig) so there is a
     # single writable owner - they are intentionally NOT here anymore.
-    return [ordered]@{
-        schemaVersion = $script:ConfigSchemaVersion
-        apps = [ordered]@{
-            codex    = Get-RtlDefaultAppConfig
-            opencode = Get-RtlDefaultAppConfig
-            traycer  = Get-RtlDefaultAppConfig
-        }
-    }
+    $apps = [ordered]@{}
+    foreach ($id in @(Get-RtlAppIds)) { $apps[$id] = Get-RtlDefaultAppConfig }
+    return [ordered]@{ schemaVersion = $script:ConfigSchemaVersion; apps = $apps }
 }
 
 # Read config, deep-merged over defaults (missing keys get defaults), validated. The
@@ -557,6 +607,7 @@ function Build-RtlConfigAsset {
     param([string]$AppId = 'codex', $Config)
     if (-not $Config) { $Config = Read-RtlConfig }
     $appCfg = $Config.apps.$AppId
+    if (-not $appCfg) { $appCfg = Get-RtlDefaultAppConfig }
     $json = ([pscustomobject]$appCfg) | ConvertTo-Json -Depth 6 -Compress
     $js = 'window.__codexRtlConfig = ' + $json + ';'
     $tmp = Join-Path $env:TEMP ('desktop-rtl-config-' + [Guid]::NewGuid().ToString('N') + '.js')
@@ -714,13 +765,11 @@ function Resolve-CodexSource {
     return $null
 }
 
-# Locate a direct (NSIS-style, per-user) install: OpenCode or Traycer. No Store/Appx; the
+# Locate a direct (NSIS-style, per-user) install. No Store/Appx; the
 # exe and asar sit under one of the profile's SourceRoots. AppDir is the whole install tree
 # (copied wholesale, including resources\app.asar.unpacked native modules). Requires BOTH the
 # asar AND the exe so a replaced/missing exe is caught here, not later at node validation.
-# Signature keys off the profile Id: OpenCode keeps its asar size+mtime (electron-updater
-# overwrites app.asar in place); a fuse-flipped profile (Traycer) also folds in the exe
-# size+mtime, so an exe-only update that changes the fuse wire invalidates the copy.
+# Signature keys off the profile id and folds in the index for loose-renderer profiles.
 function Resolve-DirectSource {
     param($Profile = $script:ActiveProfile)
     $roots = @($Profile.SourceRoots) | Where-Object { $_ -and (Test-Path $_) }
@@ -734,7 +783,7 @@ function Resolve-DirectSource {
         $asarItem = Get-Item $asar
         if (-not $ver) { $ver = $asarItem.LastWriteTimeUtc.ToString('yyyyMMddHHmmss') }
         $sig = "$($Profile.Id):$($asarItem.Length)-$($asarItem.LastWriteTimeUtc.Ticks)"
-        if ($Profile.RendererMode -eq 'dir' -and $Profile.RendererDirRel) {
+        if ($Profile.RendererMode -in @('dir', 'inline') -and $Profile.RendererDirRel) {
             # We patch the LOOSE renderer index.html, not the asar - fold it in so a
             # renderer-only app update still invalidates the copy and re-patches.
             $idx = Join-Path (Join-Path $r $Profile.RendererDirRel) 'index.html'
@@ -752,8 +801,33 @@ function Resolve-DirectSource {
 # Resolve the source for the ACTIVE app (dispatches to the app-specific resolver).
 function Resolve-RtlSource {
     param($Profile = $script:ActiveProfile)
-    if ($Profile.Id -eq 'opencode' -or $Profile.Id -eq 'traycer') { return Resolve-DirectSource -Profile $Profile }
-    return Resolve-CodexSource
+    switch ($Profile.SourceKind) {
+        'codex'  { return Resolve-CodexSource }
+        'direct' { return Resolve-DirectSource -Profile $Profile }
+        default  { throw "[PROFILE] Unknown source kind for $($Profile.Id): $($Profile.SourceKind)" }
+    }
+}
+
+function Assert-RtlT3Layout {
+    param([Parameter(Mandatory)]$Source, $Profile = $script:ActiveProfile)
+    $serverAsar = Join-Path $Source.AppDir 'resources\server.asar'
+    if (Test-Path $serverAsar) { throw '[UNSUPPORTED] T3 Code resources\server.asar layout is not supported.' }
+    $renderer = Join-Path $Source.AppDir $Profile.RendererDirRel
+    $index = Join-Path $renderer 'index.html'
+    if (-not (Test-Path $index)) { throw "[LAYOUT] T3 Code renderer index.html missing: $index" }
+    $html = [IO.File]::ReadAllText($index)
+    if (-not (Find-RtlAppBundleMatch $html)) { throw '[LAYOUT] T3 Code renderer module bundle was not found.' }
+    return $true
+}
+
+function Get-RtlSourceWatchPaths {
+    param($Profile = $script:ActiveProfile, $Source)
+    if (-not $Source) { return @() }
+    $paths = @($Source.AsarPath)
+    if ($Profile.RendererMode -in @('dir', 'inline')) {
+        $paths += Join-Path (Join-Path $Source.AppDir $Profile.RendererDirRel) 'index.html'
+    }
+    return @($paths)
 }
 
 # Validate that a resolved source has the layout we expect. Throws coded errors so
@@ -764,13 +838,14 @@ function Test-CodexSource {
     if (-not $Source)                      { throw "[NOCODEX] No $name source found." }
     if (-not (Test-Path $Source.AppDir))   { throw "[LAYOUT] $name app folder missing: $($Source.AppDir)" }
     if (-not (Test-Path $Source.AsarPath)) { throw "[LAYOUT] $name app.asar missing: $($Source.AsarPath)" }
+    if ($Profile.RendererMode -eq 'inline') { Assert-RtlT3Layout -Source $Source -Profile $Profile | Out-Null }
     try {
         $fs = [System.IO.File]::OpenRead($Source.AsarPath)
         try { $hdr = New-Object byte[] 4; [void]$fs.Read($hdr, 0, 4) } finally { $fs.Dispose() }
         if ([System.BitConverter]::ToUInt32($hdr, 0) -ne 4) { throw 'unexpected asar header' }
     } catch { throw "[LAYOUT] $name app.asar is not a readable asar: $($_.Exception.Message)" }
-    # A loose-file renderer (RendererMode 'dir') is patched with plain PowerShell - no Node,
-    # no asar edit - so only require a Node runtime for the asar-injection profiles.
+    # Loose and inline renderers are patched with plain PowerShell, so only require
+    # a Node runtime for asar-injection profiles.
     if ($Profile.NodeStrategy -ne 'none' -and -not (Resolve-RtlNode -AsarPath $Source.AsarPath -Profile $Profile)) {
         $where = if ($Profile.NodeStrategy -eq 'electron-as-node') { "$($Profile.ExeLeaf) (run as Node)" } else { 'resources\cua_node\bin\node.exe' }
         throw "[NODE] $name Node runtime ($where) was not found; the app may be incompletely installed or its layout changed."
@@ -799,6 +874,11 @@ function Test-OriginalCodexRunning {
         $_.Path -and ($procNames -contains $_.Name) -and -not $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
     }
     return [bool]$procs
+}
+
+function Test-RtlSharedInstanceConflict {
+    param($Profile = $script:ActiveProfile)
+    return [bool]($Profile.SharedSingleInstance -and (Test-OriginalCodexRunning))
 }
 
 # Verify the installer package is complete (catches "user extracted only the .cmd",
@@ -872,6 +952,25 @@ function Invoke-AsarInject {
 function Update-CodexRtlConfigAsset {
     param([string]$AppId = 'codex', [switch]$AllowExternalNodeFallback)
     $prof = Get-RtlProfile $AppId
+    if ($prof.RendererMode -eq 'inline') {
+        $rendererDir = Join-RtlTree $prof.CopyRoot $prof.RendererDirRel
+        $index = Join-Path $rendererDir 'index.html'
+        if (-not (Test-Path $index)) { throw '[LAYOUT] Patched copy renderer not found; install first.' }
+        Assert-RtlWriteAllowed -Profile $prof -Path $index | Out-Null
+        $cfgJs = Build-RtlConfigAsset -AppId $AppId
+        try {
+            $body = [IO.File]::ReadAllText($cfgJs)
+            $html = [IO.File]::ReadAllText($index)
+            $re = '(?is)<script\b[^>]*\bid=["'']desktop-rtl-config["''][^>]*>.*?</script>'
+            if (([regex]::Matches($html, $re)).Count -ne 1) { throw '[VERIFY] inline config tag missing or duplicated' }
+            $tag = '<script id="desktop-rtl-config">' + $body + '</script>'
+            $html = [regex]::Replace($html, $re, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $tag }, 1)
+            [IO.File]::WriteAllText($index, $html, (New-Object Text.UTF8Encoding $false))
+            Test-RtlInlineInjection -RendererDir $rendererDir | Out-Null
+            Set-RtlConfigApplied
+        } finally { Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
+        return
+    }
     if ($prof.RendererMode -eq 'dir') {
         # Loose-file renderer: just overwrite the config asset next to the payload (no Node,
         # no asar). The config <script> tag is already in index.html from the build inject.
@@ -925,12 +1024,12 @@ function Sync-RtlConfigAsset {
     param([string]$AppId = 'codex', [switch]$AllowExternalNodeFallback)
     if (-not (Test-Path $script:ConfigFile)) { return $false }
     $prof = Get-RtlProfile $AppId
-    $liveAsar = Join-Path $prof.CopyRoot $prof.AsarRelPath
-    if (-not (Test-Path $liveAsar)) { return $false }
+    $liveTarget = if ($prof.RendererMode -in @('dir','inline')) { Join-Path (Join-RtlTree $prof.CopyRoot $prof.RendererDirRel) 'index.html' } else { Join-Path $prof.CopyRoot $prof.AsarRelPath }
+    if (-not (Test-Path $liveTarget)) { return $false }
     $cur = Get-RtlConfigHash
     $applied = if (Test-Path $script:ConfigAppliedMarker) { (Get-Content $script:ConfigAppliedMarker -Raw).Trim() } else { '' }
     if ($cur -and $cur -eq $applied) { return $false }   # already up to date
-    if (Test-CodexRtlRunning) { Write-RtlLog 'Config change pending; will apply when Codex (RTL) closes.'; return $false }
+    if ($prof.RendererMode -notin @('dir','inline') -and (Test-CodexRtlRunning)) { Write-RtlLog 'Config change pending; will apply when the RTL app closes.'; return $false }
     Update-CodexRtlConfigAsset -AppId $AppId -AllowExternalNodeFallback:$AllowExternalNodeFallback
     Write-RtlLog 'Applied pending settings to the copy.'
     return $true
@@ -997,7 +1096,7 @@ function Find-RtlAppBundleMatch {
     foreach ($st in [regex]::Matches($Html, '<script\b[^>]*>', 'IgnoreCase')) {
         $tag = $st.Value
         if ($tag -notmatch '(?i)\btype\s*=\s*["'']module["'']') { continue }
-        $sm = [regex]::Match($tag, '(?i)\bsrc\s*=\s*["''](\./assets/[^"''?#]+\.js)(?:[?#][^"'']*)?["'']')
+        $sm = [regex]::Match($tag, '(?i)\bsrc\s*=\s*["'']((?:\./|/)?assets/[^"''?#]+\.js)(?:[?#][^"'']*)?["'']')
         if (-not $sm.Success) { continue }
         if ($sm.Groups[1].Value -match '(?i)desktop-rtl') { continue }   # never anchor to our own tag
         return $st
@@ -1055,18 +1154,68 @@ function Test-RtlDirInjection {
     param([string]$RendererDir)
     $index  = Join-Path $RendererDir 'index.html'
     $asset  = Join-Path $RendererDir ('assets\' + $script:RtlDirPayloadName)
+    $config = Join-Path $RendererDir ('assets\' + $script:RtlDirConfigName)
     if (-not (Test-Path -LiteralPath $index)) { throw "[VERIFY] renderer index.html missing: $index" }
     if (-not (Test-Path -LiteralPath $asset)) { throw "[VERIFY] payload asset missing from renderer: $asset" }
+    if (-not (Test-Path -LiteralPath $config)) { throw "[VERIFY] config asset missing from renderer: $config" }
     $html = [IO.File]::ReadAllText($index)
     $tagRe = Get-RtlDirTagRegex $script:RtlDirPayloadName
     $tagM = [regex]::Match($html, $tagRe, 'IgnoreCase')
+    $cfgRe = Get-RtlDirTagRegex $script:RtlDirConfigName
+    $cfgM = [regex]::Match($html, $cfgRe, 'IgnoreCase')
     if (-not $tagM.Success) { throw '[VERIFY] payload <script> tag missing from renderer index.html' }
     # Exactly one payload tag (idempotency guard).
     if (([regex]::Matches($html, $tagRe, 'IgnoreCase')).Count -ne 1) { throw '[VERIFY] payload <script> tag is duplicated' }
+    if (-not $cfgM.Success) { throw '[VERIFY] config <script> tag missing from renderer index.html' }
+    if (([regex]::Matches($html, $cfgRe, 'IgnoreCase')).Count -ne 1) { throw '[VERIFY] config <script> tag is duplicated' }
     # The payload tag must precede the app's own bundle so the global is set in time.
     $bundle = Find-RtlAppBundleMatch $html
-    if ($bundle -and $tagM.Index -gt $bundle.Index) { throw '[VERIFY] payload tag is after the app bundle' }
+    if (-not $bundle) { throw '[VERIFY] app module bundle missing from renderer index.html' }
+    if ($tagM.Index -gt $bundle.Index) { throw '[VERIFY] payload tag is after the app bundle' }
+    if ($cfgM.Index -gt $bundle.Index) { throw '[VERIFY] config tag is after the app bundle' }
     Write-RtlLog "verify(dir): payload present in $index"
+    return $true
+}
+
+function Get-RtlInlineTagRegex {
+    param([string]$Id)
+    return '(?is)<script\b[^>]*\bid=["'']' + [regex]::Escape($Id) + '["''][^>]*>.*?</script>'
+}
+
+function Invoke-RtlInlineInject {
+    param([string]$RendererDir, $Profile, [string]$PatchJs, [string]$ConfigJs)
+    $index = Join-Path $RendererDir 'index.html'
+    Assert-RtlWriteAllowed -Profile $Profile -Path $index | Out-Null
+    if (-not (Test-Path $index)) { throw "[LAYOUT] renderer index.html not found: $index" }
+    $html = [IO.File]::ReadAllText($index)
+    $html = [regex]::Replace($html, (Get-RtlInlineTagRegex 'desktop-rtl-config'), '')
+    $html = [regex]::Replace($html, (Get-RtlInlineTagRegex 'desktop-rtl-payload'), '')
+    $bundle = Find-RtlAppBundleMatch $html
+    if (-not $bundle) { throw '[LAYOUT] renderer module bundle not found; refusing inline injection.' }
+    $configBody = if ($ConfigJs) { [IO.File]::ReadAllText($ConfigJs) } else { 'window.__codexRtlConfig = {};' }
+    $payloadBody = [IO.File]::ReadAllText($PatchJs)
+    if (-not $payloadBody) { throw '[LAYOUT] RTL payload is empty.' }
+    $insert = '<script id="desktop-rtl-config">' + $configBody + '</script>' + '<script type="module" id="desktop-rtl-payload">' + $payloadBody + '</script>'
+    $html = $html.Substring(0, $bundle.Index) + $insert + $html.Substring($bundle.Index)
+    [IO.File]::WriteAllText($index, $html, (New-Object Text.UTF8Encoding $false))
+    Write-RtlLog "inline-inject: patched $index"
+}
+
+function Test-RtlInlineInjection {
+    param([string]$RendererDir)
+    $index = Join-Path $RendererDir 'index.html'
+    if (-not (Test-Path $index)) { throw "[VERIFY] renderer index.html missing: $index" }
+    $html = [IO.File]::ReadAllText($index)
+    $cfgRe = Get-RtlInlineTagRegex 'desktop-rtl-config'
+    $payloadRe = Get-RtlInlineTagRegex 'desktop-rtl-payload'
+    $cfg = [regex]::Matches($html, $cfgRe); $payload = [regex]::Matches($html, $payloadRe)
+    if ($cfg.Count -ne 1) { throw '[VERIFY] inline config tag missing or duplicated' }
+    if ($payload.Count -ne 1) { throw '[VERIFY] inline payload tag missing or duplicated' }
+    if ($cfg[0].Value -notmatch 'window\.__codexRtlConfig\s*=') { throw '[VERIFY] inline config global missing' }
+    if ($payload[0].Value -notmatch '(?s)>\s*\S') { throw '[VERIFY] inline payload body is empty' }
+    $bundle = Find-RtlAppBundleMatch $html
+    if (-not $bundle) { throw '[VERIFY] app module bundle missing from renderer index.html' }
+    if ($cfg[0].Index -gt $payload[0].Index -or $payload[0].Index -gt $bundle.Index) { throw '[VERIFY] inline script ordering is invalid' }
     return $true
 }
 
@@ -1203,7 +1352,8 @@ function Invoke-CodexRtlDiagnose {
     Write-RtlLog '=== Diagnose start ==='
     $r = [ordered]@{
         CodexFound = $false; SourceType = $null; SourceVersion = $null; AppDir = $null
-        AsarPath = $null; AsarExists = $false; NodePath = $null; NodeExists = $false
+        AsarPath = $null; AsarExists = $false; NodePath = $null
+        NodeRequired = ($script:ActiveProfile.NodeStrategy -ne 'none'); NodeExists = $false
         LayoutValid = $false; LayoutError = $null
         TargetDrive = $null; FreeGB = $null; SourceSizeGB = $null; EnoughSpace = $null
         RtlInstalled = $false; CopyExists = $false; RtlRunning = $false; OriginalRunning = $false
@@ -1214,8 +1364,10 @@ function Invoke-CodexRtlDiagnose {
         if ($src) {
             $r.CodexFound = $true; $r.SourceType = $src.Type; $r.SourceVersion = $src.Version
             $r.AppDir = $src.AppDir; $r.AsarPath = $src.AsarPath; $r.AsarExists = (Test-Path $src.AsarPath)
-            $node = Resolve-RtlNode -AsarPath $src.AsarPath
-            $r.NodePath = $node; $r.NodeExists = [bool]$node
+            if ($r.NodeRequired) {
+                $node = Resolve-RtlNode -AsarPath $src.AsarPath
+                $r.NodePath = $node; $r.NodeExists = [bool]$node
+            }
             try { Test-CodexSource -Source $src | Out-Null; $r.LayoutValid = $true }
             catch { $r.LayoutError = $_.Exception.Message }
         }
@@ -1291,7 +1443,7 @@ function Export-CodexRtlDiagnostics {
         try { $diag = Invoke-CodexRtlDiagnose; & $writeSan 'diagnose.json' ($diag | ConvertTo-Json -Depth 4) } catch { & $writeSan 'diagnose.error.txt' $_.Exception.Message }
         # versions + environment
         $nodeVer = $null
-        try { $src = Resolve-RtlSource; if ($src) { $n = Resolve-RtlNode -AsarPath $src.AsarPath; if ($n) { $nodeVer = (Invoke-RtlNodeCli -Node $n -Arguments @('--version')).Out } } } catch {}
+        try { $src = Resolve-RtlSource; if ($src -and $script:ActiveProfile.NodeStrategy -ne 'none') { $n = Resolve-RtlNode -AsarPath $src.AsarPath; if ($n) { $nodeVer = (Invoke-RtlNodeCli -Node $n -Arguments @('--version')).Out } } } catch {}
         $ver = @(
             "patchVersion  = $($script:PatchVersion)",
             "schemaVersion = $($script:SchemaVersion)",
@@ -1319,6 +1471,10 @@ function Export-CodexRtlDiagnostics {
                     Test-RtlDirInjection -RendererDir $rd | Out-Null
                     & $writeSan 'injection.json' (@{ ok = $true; mode = 'dir'; renderer = $rd } | ConvertTo-Json)
                 }
+            } elseif ($script:ActiveProfile.RendererMode -eq 'inline') {
+                $rd = Get-RtlRendererDir -Profile $script:ActiveProfile -Root $script:CopyRoot
+                Test-RtlInlineInjection -RendererDir $rd | Out-Null
+                & $writeSan 'injection.json' (@{ ok = $true; mode = 'inline'; renderer = $rd } | ConvertTo-Json)
             } else {
                 $liveAsar = Join-Path $script:CopyRoot $script:ActiveProfile.AsarRelPath
                 if (Test-Path $liveAsar) { $inj = Test-RtlInjection -AsarPath $liveAsar -AllowExternalNodeFallback; & $writeSan 'injection.json' ($inj | ConvertTo-Json) }
@@ -1451,6 +1607,8 @@ function Invoke-CodexRtlUpdate {
             try {
                 if ($p.RendererMode -eq 'dir') {
                     Test-RtlDirInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) | Out-Null
+                } elseif ($p.RendererMode -eq 'inline') {
+                    Test-RtlInlineInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) | Out-Null
                 } else {
                     Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
                 }
@@ -1506,6 +1664,10 @@ function Invoke-CodexRtlUpdate {
                     Invoke-RtlDirInject -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) -Profile $p -PatchJs $patchJs -ConfigJs $cfgJs
                     Set-RtlStep 'verify' 82 $true
                     Test-RtlDirInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) | Out-Null
+                } elseif ($p.RendererMode -eq 'inline') {
+                    Invoke-RtlInlineInject -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) -Profile $p -PatchJs $patchJs -ConfigJs $cfgJs
+                    Set-RtlStep 'verify' 82 $true
+                    Test-RtlInlineInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $stagingApp) | Out-Null
                 } else {
                     # asar-served renderer (Codex/OpenCode). A read-only guard refuses to proceed
                     # if the copy's asar-integrity fuse is ON (these builds ship it off, so it
@@ -1552,9 +1714,13 @@ function Invoke-CodexRtlUpdate {
         $verify = $null
         try {
             if ($p.RendererMode -eq 'dir') { Test-RtlDirInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $script:CopyRoot) | Out-Null }
+            elseif ($p.RendererMode -eq 'inline') { Test-RtlInlineInjection -RendererDir (Get-RtlRendererDir -Profile $p -Root $script:CopyRoot) | Out-Null }
             else { $verify = Test-RtlInjection -AsarPath $liveAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback }
         }
-        catch { Write-RtlLog "WARNING: post-swap verification issue: $($_.Exception.Message)" }
+        catch {
+            Write-RtlLog "post-swap verification failed: $($_.Exception.Message)"
+            if ($p.RendererMode -in @('dir','inline')) { throw }
+        }
         Write-RtlState @{ sourceSignature = $src.Signature; codexVersion = $src.Version; sourcePath = $src.AppDir; payloadSha256 = $verify.payloadSha256; asarSha256 = $verify.asarSha256 }
         Set-RtlConfigApplied   # the fresh build baked the current config.json
         Write-RtlLog "DONE: $app (RTL) now at v$($src.Version)."
@@ -1607,7 +1773,7 @@ function Invoke-CodexRtlWatchLoop {
     # Watch the app.asar file itself (its folder + filename filter), not the whole tree,
     # so log/cache writes don't trigger false updates. NSIS/direct installs overwrite
     # app.asar in place on update, so LastWrite/Size/rename on that file is the signal.
-    $watchPath = if ($src0 -and $src0.Type -eq 'Direct') { $src0.AsarPath } else { $null }
+    $watchPath = if ($src0 -and $src0.Type -eq 'Direct') { @(Get-RtlSourceWatchPaths -Profile $script:ActiveProfile -Source $src0)[0] } else { $null }
     $fsw = New-RtlSourceWatcher -WatchPath $watchPath
     Write-RtlLog ("Watch loop starting (poll={0}s, fsw={1})." -f $PollSec, [bool]$fsw)
     try {
@@ -1645,10 +1811,7 @@ function Get-RtlTrayLauncher {
     return $null
 }
 
-# Build the HKCU\Run command for the active app's watcher. Codex prefers the tray
-# (a resident NotifyIcon that subsumes the watcher); OpenCode has no tray yet, so it
-# runs the hidden watcher loop with -App opencode. The RunName is per-app, so both
-# apps' autostart entries coexist.
+# Build the HKCU\Run command for the active app's legacy watcher fallback.
 function Get-RtlWatchCommand {
     param([string]$WatchScript)
     $appId = $script:ActiveProfile.Id
@@ -1900,7 +2063,7 @@ function Get-RtlInstalledApps {
     $save = $script:ActiveProfile.Id
     $ids = @()
     try {
-        foreach ($id in @('codex', 'opencode', 'traycer')) {
+        foreach ($id in @(Get-RtlAppIds)) {
             Set-RtlActiveApp $id | Out-Null
             $copyExe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
             if (Test-Path $copyExe) { $ids += $id }
