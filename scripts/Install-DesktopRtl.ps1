@@ -6,7 +6,8 @@
     install is only read, never modified), creates "(RTL)" Start-menu and Desktop
     shortcuts, and registers a per-user logon watcher that re-applies the patch
     whenever the app updates - safely, while the copy is closed, with no
-    administrator rights. A Node runtime shipped inside the app is used, so no
+    administrator rights. Profiles that need Node for patching use the runtime
+    selected by their NodeStrategy; Traycer and T3 Code do not need Node. No
     external Node.js is required. The GUI installer wraps this same logic.
 .PARAMETER NoWatcher
     Skip registering the auto-update watcher (manual updates only).

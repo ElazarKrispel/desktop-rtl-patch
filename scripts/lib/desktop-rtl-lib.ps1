@@ -1352,7 +1352,8 @@ function Invoke-CodexRtlDiagnose {
     Write-RtlLog '=== Diagnose start ==='
     $r = [ordered]@{
         CodexFound = $false; SourceType = $null; SourceVersion = $null; AppDir = $null
-        AsarPath = $null; AsarExists = $false; NodePath = $null; NodeExists = $false
+        AsarPath = $null; AsarExists = $false; NodePath = $null
+        NodeRequired = ($script:ActiveProfile.NodeStrategy -ne 'none'); NodeExists = $false
         LayoutValid = $false; LayoutError = $null
         TargetDrive = $null; FreeGB = $null; SourceSizeGB = $null; EnoughSpace = $null
         RtlInstalled = $false; CopyExists = $false; RtlRunning = $false; OriginalRunning = $false
@@ -1363,10 +1364,10 @@ function Invoke-CodexRtlDiagnose {
         if ($src) {
             $r.CodexFound = $true; $r.SourceType = $src.Type; $r.SourceVersion = $src.Version
             $r.AppDir = $src.AppDir; $r.AsarPath = $src.AsarPath; $r.AsarExists = (Test-Path $src.AsarPath)
-            if ($script:ActiveProfile.NodeStrategy -ne 'none') {
+            if ($r.NodeRequired) {
                 $node = Resolve-RtlNode -AsarPath $src.AsarPath
                 $r.NodePath = $node; $r.NodeExists = [bool]$node
-            } else { $r.NodeExists = $true }
+            }
             try { Test-CodexSource -Source $src | Out-Null; $r.LayoutValid = $true }
             catch { $r.LayoutError = $_.Exception.Message }
         }

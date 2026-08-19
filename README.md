@@ -23,7 +23,8 @@ keeping code blocks and inline `` `code` `` strictly left-to-right and correctly
 a sentence, even when an English `` `token` `` sits in the middle of a Hebrew line.
 
 It installs a **separate patched copy** per app; your original installs are never changed.
-**No Node.js is required** (the patch uses a Node runtime that already ships inside the app).
+**No external Node.js is required**. Profiles that need Node use an app-provided runtime;
+Traycer and T3 Code do not need Node for patching.
 
 ## התקנה מהירה (עברית) 🚀
 
@@ -32,8 +33,8 @@ It installs a **separate patched copy** per app; your original installs are neve
 2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.3.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
 3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית. בוחרים את האפליקציה
-   בבורר שלמעלה (Codex, OpenCode או Traycer), לוחצים **"התקן"** וממתינים כדקה.
-4. פותחים את **"Codex (RTL)"**, **"OpenCode (RTL)"** או **"Traycer (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
+   בבורר שלמעלה (Codex, OpenCode, Traycer או T3 Code), לוחצים **"התקן"** וממתינים כדקה.
+4. פותחים את **"Codex (RTL)"**, **"OpenCode (RTL)"**, **"Traycer (RTL)"** או **"T3 Code (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
 
 > בלי הרשאות מנהל ובלי להתקין Node.js. ההעתקה הראשונה לוקחת כדקה, ומכאן זה מתעדכן לבד.
 > תמיד פותחים דרך קיצור הדרך עם ה-(RTL); האפליקציה המקורית נשארת LTR ולא משתנה.
@@ -47,8 +48,10 @@ It installs a **separate patched copy** per app; your original installs are neve
     the layout automatically.
   * **OpenCode desktop** (the regular installer from opencode.ai).
   * **Traycer desktop** (the installer from traycer.ai).
+  * **T3 Code** (the current Alpha layout).
 * **Windows 10 or 11** with Windows PowerShell 5.1 (built in).
-* **No administrator rights**, and **no Node.js** (the patch uses the app's own runtime).
+* **No administrator rights**, and **no external Node.js**. Node use is profile-driven;
+  Traycer and T3 Code do not require it.
 
 ## Install (the easy way)
 

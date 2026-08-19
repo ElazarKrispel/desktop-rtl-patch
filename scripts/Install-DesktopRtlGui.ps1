@@ -493,7 +493,7 @@ $btnDiag.Add_Click({
                 '--- אבחון ---',
                 "$diagApp מותקן: $(if($d.CodexFound){'כן'}else{'לא'})  (גרסה $($d.SourceVersion))",
                 "מבנה תקין: $(if($d.LayoutValid){'כן'}else{'לא - '+$d.LayoutError})",
-                "Node מובנה: $(if($d.NodeExists){'נמצא'}else{'חסר'})",
+                "Node: $(if(-not $d.NodeRequired){'לא נדרש'}elseif($d.NodeExists){'נמצא'}else{'חסר'})",
                 "מקום פנוי: $($d.FreeGB)GB  (נדרש ~$($d.SourceSizeGB)GB, מספיק: $(if($d.EnoughSpace){'כן'}else{'לא'}))",
                 "RTL מותקן: $(if($d.RtlInstalled){'כן'}else{'לא'})  | RTL רץ: $(if($d.RtlRunning){'כן'}else{'לא'})  | $diagApp מקורי רץ: $(if($d.OriginalRunning){'כן'}else{'לא'})",
                 "הפרטים המלאים נשמרו בקובץ הלוג."
