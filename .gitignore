@@ -13,6 +13,12 @@ node_modules/
 *.png
 tmp/
 
+# ...but the published artwork under assets/ is part of the repo
+!assets/*.png
+
+# raw screen captures feeding tools/Compose-Screens.ps1 (never published)
+tools/raw/
+
 # release build output (Build-Release.ps1)
 dist/
 
