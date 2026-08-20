@@ -16,6 +16,7 @@ Supported apps:
 | **OpenCode desktop** (anomalyco / SST) | opencode.ai installer | "OpenCode (RTL)" |
 | **Traycer desktop** (traycer.ai) | traycer.ai installer | "Traycer (RTL)" |
 | **T3 Code desktop** (t3.chat) | T3 Code Alpha installer | "T3 Code (RTL)" |
+| **Grok Bot desktop** (xAI) | Grok Bot installer | "Grok Bot (RTL)" |
 
 These apps show all chat text left-to-right, which makes Hebrew/Arabic look broken. This tool
 makes Hebrew/Arabic **prose** flow right-to-left (correct alignment and punctuation), while
@@ -29,12 +30,12 @@ Traycer and T3 Code do not need Node for patching.
 ## התקנה מהירה (עברית) 🚀
 
 1. ודאו שהאפליקציה שרוצים לתקן מותקנת: **Codex** מה-Microsoft Store (בגרסאות החדשות היא
-   כבר נקראת **ChatGPT**), **OpenCode**, **Traycer**, או **T3 Code**.
-2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.3.0.zip)**,
+   כבר נקראת **ChatGPT**), **OpenCode**, **Traycer**, **T3 Code**, או **Grok Bot**.
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.4.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ → "Extract All").
 3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית. בוחרים את האפליקציה
-   בבורר שלמעלה (Codex, OpenCode, Traycer או T3 Code), לוחצים **"התקן"** וממתינים כדקה.
-4. פותחים את **"Codex (RTL)"**, **"OpenCode (RTL)"**, **"Traycer (RTL)"** או **"T3 Code (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
+   בבורר שלמעלה (Codex, OpenCode, Traycer, T3 Code או Grok Bot), לוחצים **"התקן"** וממתינים כדקה.
+4. פותחים את **"Codex (RTL)"**, **"OpenCode (RTL)"**, **"Traycer (RTL)"**, **"T3 Code (RTL)"** או **"Grok Bot (RTL)"** משולחן העבודה או מתפריט Start. זהו! 🎉
 
 > בלי הרשאות מנהל ובלי להתקין Node.js. ההעתקה הראשונה לוקחת כדקה, ומכאן זה מתעדכן לבד.
 > תמיד פותחים דרך קיצור הדרך עם ה-(RTL); האפליקציה המקורית נשארת LTR ולא משתנה.
@@ -49,18 +50,20 @@ Traycer and T3 Code do not need Node for patching.
   * **OpenCode desktop** (the regular installer from opencode.ai).
   * **Traycer desktop** (the installer from traycer.ai).
   * **T3 Code** (the current Alpha layout).
+  * **Grok Bot** (the regular per-user installer).
 * **Windows 10 or 11** with Windows PowerShell 5.1 (built in).
 * **No administrator rights**, and **no external Node.js**. Node use is profile-driven;
   Traycer and T3 Code do not require it.
 
 ## Install (the easy way)
 
-1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.3.0.zip)** and extract it.
+1. **[⬇️ Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.4.0.zip)** and extract it.
 2. Double-click **`Install-Desktop-RTL.vbs`** (or `Install-Desktop-RTL.cmd`). A small window opens.
 3. Pick the app at the top (Codex is the default), click **Install** and wait about a minute.
 
 It builds a patched copy (Codex under `%LOCALAPPDATA%\OpenAI\CodexRtl`, OpenCode under
-`%LOCALAPPDATA%\RtlPatch\opencode`, Traycer under `%LOCALAPPDATA%\RtlPatch\traycer`, and T3 Code under `%LOCALAPPDATA%\RtlPatch\t3code`), adds an
+`%LOCALAPPDATA%\RtlPatch\opencode`, Traycer under `%LOCALAPPDATA%\RtlPatch\traycer`, T3 Code under
+`%LOCALAPPDATA%\RtlPatch\t3code`, and Grok Bot under `%LOCALAPPDATA%\RtlPatch\grokbot`), adds an
 **"(RTL)" shortcut** to the Desktop and Start menu, and starts a background agent that keeps
 the copy patched across app updates. **Your original installs are never touched.**
 
@@ -74,10 +77,10 @@ the copy patched across app updates. **Your original installs are never touched.
 For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.3.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.4.0/install.ps1 | iex
 ```
 
-This downloads the same code, pinned to the `v2.3.0` tag (verified against a published
+This downloads the same code, pinned to the `v2.4.0` tag (verified against a published
 SHA-256 checksum), and opens the installer window. Running a remote script means trusting it;
 if you are unsure, prefer the ZIP download above (it is exactly the same code, and you can
 read it first).
@@ -86,11 +89,11 @@ Prefer no window at all? Add `RTL_SILENT` (and optionally `RTL_APP`) on the same
 whole install runs headless in the terminal:
 
 ```powershell
-$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.3.0/install.ps1 | iex
-$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.3.0/install.ps1 | iex
+$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.4.0/install.ps1 | iex
+$env:RTL_SILENT='1'; $env:RTL_APP='opencode'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.4.0/install.ps1 | iex
 ```
 
-Headless CLI (all take `-App codex|opencode|traycer|t3code`, default codex):
+Headless CLI (all take `-App codex|opencode|traycer|t3code|grokbot`, default codex):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-DesktopRtl.ps1 -App opencode
@@ -172,12 +175,30 @@ original apps are unaffected.
   RTL copy may focus the original. Launching either copy may also become the current `t3code://`
   protocol handler. WSL-only mode and `VITE_DEV_SERVER_URL` are not supported.
 
+**Grok Bot** (xAI, NSIS per-user):
+
+* Shaped like OpenCode: the executable sits at the tree root and the renderer really is served
+  from inside `resources\app.asar` (`dist/renderer/index.html` loading `./assets/index-*.js`), so
+  the copy's `app.asar` is the single edited file. Its asar-integrity fuse ships **disabled**.
+* **No bundled Node**: like OpenCode, the editor runs the copy's own Electron binary as Node
+  (`ELECTRON_RUN_AS_NODE` + `ELECTRON_NO_ASAR`).
+* Its Content-Security-Policy is `script-src 'self'` and `style-src 'self' 'unsafe-inline'`, which
+  allows both the injected same-origin script and the style element the RTL payload creates.
+* **Its self-updater is switched off in the RTL copy only.** Grok Bot ships its own updater, which
+  would otherwise replace the patched `app.asar` behind the tool's back. Grok Bot's own kill switch,
+  the `SAND_DISABLE_UPDATES=1` environment variable, is therefore set on every launch of the copy —
+  by the generated `Launch-GrokBotRtl.vbs` behind the "(RTL)" shortcut, and by the tray/installer
+  "open" action. **Your original Grok Bot keeps updating exactly as before**; the copy picks each new
+  version up from the original through the Desktop RTL watcher, as every other app does.
+* Grok Bot shares a single-instance lock with its original. If the original is open, launching the
+  RTL copy focuses the original instead — open only one of the two.
+
 **All supported apps**, and unlike other RTL patches:
 
 * **The original install is never modified** - only a separate copy is ever written, guarded by a
   `[SAFETY]` check that refuses to touch anything outside the tool's own staging/copy folders. For
-  Codex and OpenCode the copy's `app.asar` is the only edited file (their asar-integrity fuse ships
-  disabled); for Traycer and T3 Code only renderer HTML in the copy is edited.
+  Codex, OpenCode and Grok Bot the copy's `app.asar` is the only edited file (their asar-integrity fuse
+  ships disabled); for Traycer and T3 Code only renderer HTML in the copy is edited.
   Other RTL patches flip a fuse on the **original signed binary** and patch the install in place;
   this tool never touches the original.
 
@@ -238,8 +259,8 @@ src/desktop-rtl-patch.js          injected renderer script (the RTL fix, configu
 scripts/Install-DesktopRtlGui.ps1 graphical installer (WinForms, Hebrew, app selector)
 scripts/DesktopRtlTray.ps1        system-tray app (auto-update + menu, subsumes the watcher)
 scripts/DesktopRtlSettings.ps1    settings dialog (WinForms, Hebrew): direction, surfaces, font
-scripts/Install-DesktopRtl.ps1    headless installer, -App codex|opencode|traycer|t3code
-scripts/Update-DesktopRtl.ps1     force a re-patch, -App codex|opencode|traycer|t3code
+scripts/Install-DesktopRtl.ps1    headless installer, -App codex|opencode|traycer|t3code|grokbot
+scripts/Update-DesktopRtl.ps1     force a re-patch, -App codex|opencode|traycer|t3code|grokbot
 scripts/Uninstall-DesktopRtl.ps1  remove the copy, shortcuts, tray/watcher, state
 scripts/Watch-DesktopRtl.ps1      background watcher (event-driven auto-update, no admin)
 scripts/Build-Release.ps1         package a checksummed release asset (maintainer helper)
@@ -252,10 +273,10 @@ test/renderer-injection.harness.ps1  renderer injection regression harness
 ## Disclaimer
 
 Unofficial community project, not affiliated with or endorsed by OpenAI, OpenCode's makers,
-Traycer, or T3 Code. It was built for accessibility: Hebrew and Arabic right-to-left
+Traycer, T3 Code, or xAI. It was built for accessibility: Hebrew and Arabic right-to-left
 support, which these apps do not yet provide. It modifies **local copies** of the apps and
 does **not** redistribute any of their code; it does not bypass authentication, payment, or
 access controls, and it never changes the original installs. Modifying an app may not be
 permitted by its terms of service, so please review them and use this at your own discretion
-and risk. "Codex", "ChatGPT", "OpenCode", "Traycer", and "T3 Code" are trademarks of their respective owners; this is
+and risk. "Codex", "ChatGPT", "OpenCode", "Traycer", "T3 Code", and "Grok Bot" are trademarks of their respective owners; this is
 an independent project that only describes its own patch.

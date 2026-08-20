@@ -31,7 +31,7 @@
 
   if (typeof document === "undefined") return;
   if (window.__codexRtlPatchVersion) return;
-  window.__codexRtlPatchVersion = "1.3.0";
+  window.__codexRtlPatchVersion = "1.3.1";
 
   /* ---------------------------- configuration -------------------------- */
 
@@ -53,8 +53,14 @@
 
   var INPUT_SEL =
     '.ProseMirror, [contenteditable="true"], textarea, input[type="text"], input:not([type])';
+  // Code surfaces are never re-directed. Beyond the standard elements this lists the
+  // known app-specific code containers, because some apps render code blocks WITHOUT a
+  // <pre>/<code> at all: Grok Bot builds them from div.ui-default-code +
+  // div.ui-default-code__line-content, so without this hook a Hebrew comment line inside
+  // a code block matched the leaf pass and got dir="rtl" (right-aligned inside otherwise
+  // LTR code).
   var CODE_SEL =
-    'pre, code, kbd, samp, .cm-editor, .monaco-editor, .xterm, [class*="language-"], [class*="hljs"]';
+    'pre, code, kbd, samp, .cm-editor, .monaco-editor, .xterm, [class*="language-"], [class*="hljs"], [class*="default-code"]';
   var TEXT_SEL =
     "p, li, h1, h2, h3, h4, h5, h6, blockquote, summary, dt, dd, figcaption";
   var TABLE_CELL_SEL = "td, th";
@@ -454,7 +460,7 @@
       css.push(".katex,.katex-display,mjx-container{unicode-bidi:isolate!important;direction:ltr!important}");
     }
     if (S_CODEISO) {
-      css.push(':where(pre,code,kbd,samp,[class*="language-"],[class*="hljs"],.cm-editor,.monaco-editor,.xterm,diffs-container){direction:ltr!important;text-align:left!important}');
+      css.push(':where(pre,code,kbd,samp,[class*="language-"],[class*="hljs"],[class*="default-code"],.cm-editor,.monaco-editor,.xterm,diffs-container){direction:ltr!important;text-align:left!important}');
       css.push("diffs-container{unicode-bidi:isolate!important}");
       css.push("code{unicode-bidi:isolate!important}");
       css.push("pre{unicode-bidi:isolate!important}");

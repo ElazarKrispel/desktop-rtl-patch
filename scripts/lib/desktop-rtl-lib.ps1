@@ -20,7 +20,7 @@
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 
-$script:PatchVersion  = '2.3.0'
+$script:PatchVersion  = '2.4.0'
 $script:SchemaVersion = 2
 
 # --- Agent-scoped globals (v2.1.0 unified tray agent) ------------------------
@@ -259,6 +259,8 @@ function Get-RtlProfile {
                 ExeHashPatch      = $null
                 CodeSign          = $null
                 UpdateHelper      = $null
+                LaunchEnv         = $null          # no launch-time environment overrides
+                LaunchScript      = $null          # so the shortcut points straight at the exe
             }
         }
         'opencode' = {
@@ -306,6 +308,8 @@ function Get-RtlProfile {
                 ExeHashPatch      = $null
                 CodeSign          = $null
                 UpdateHelper      = $null
+                LaunchEnv         = $null          # no launch-time environment overrides
+                LaunchScript      = $null          # so the shortcut points straight at the exe
             }
         }
         'traycer' = {
@@ -362,6 +366,8 @@ function Get-RtlProfile {
                 ExeHashPatch      = $null
                 CodeSign          = $null
                 UpdateHelper      = $null
+                LaunchEnv         = $null          # no launch-time environment overrides
+                LaunchScript      = $null          # so the shortcut points straight at the exe
             }
         }
         't3code' = {
@@ -406,6 +412,70 @@ function Get-RtlProfile {
                 ExeHashPatch      = $null
                 CodeSign          = $null
                 UpdateHelper      = $null
+                LaunchEnv         = $null          # no launch-time environment overrides
+                LaunchScript      = $null          # so the shortcut points straight at the exe
+            }
+        }
+        'grokbot' = {
+            # Grok Bot (xAI / "Sand", built on the Cursor stack) - Electron, NSIS per-user,
+            # shaped exactly like OpenCode: exe at the tree root, renderer served from INSIDE
+            # resources\app.asar (dist/renderer/index.html loading ./assets/index-*.js), no
+            # bundled Node, asar-integrity fuse shipped disabled. So it uses the plain asar
+            # injection path with the copied exe run as Node - no engine change needed.
+            # Its CSP allows the payload: script-src 'self' (same-origin asset inside the
+            # asar) and style-src 'self' 'unsafe-inline' (the payload's dynamic <style>).
+            #
+            # SELF-UPDATER: Grok Bot ships its own SandUpdateService, which would replace the
+            # COPY's app.asar behind our back (the watcher would not notice, because the
+            # ORIGINAL source never changed). Its official kill switch is the environment
+            # variable SAND_DISABLE_UPDATES=1 - main.cjs computes
+            # `envDisabled: process.env.SAND_DISABLE_UPDATES === "1"` and constructs the
+            # update service already inert ("disabled-by-env"). We therefore declare it as
+            # this profile's LaunchEnv, so BOTH launch paths (the shortcut's generated .vbs
+            # and Start-RtlCopyApp for the GUI/tray) always start the copy with it set. The
+            # ORIGINAL install is untouched and keeps updating normally; the copy picks the
+            # new version up through the source + the Desktop RTL watcher.
+            $base = Join-Path $env:LOCALAPPDATA 'RtlPatch\grokbot'
+            return [pscustomobject]@{
+                Id                = 'grokbot'
+                DisplayName       = 'Grok Bot'
+                ShortcutLabel     = 'Grok Bot (RTL)'
+                ShortcutDesc      = 'Grok Bot with Hebrew / RTL support'
+                Mode              = 'copy'
+                RequiresElevation = $false
+                AppxName          = $null          # NSIS per-user, no Store/Appx
+                SourceKind        = 'direct'
+                SourceRoots       = @((Join-Path $env:LOCALAPPDATA 'Programs\Grok Bot'))
+                StateDir          = $base
+                CopyRoot          = (Join-Path $base 'copy')
+                Staging           = (Join-Path $base 'copy.staging')
+                OldRoot           = (Join-Path $base 'copy.old')
+                TargetDir         = $null
+                AppSubdir         = ''              # tree lives at the copy root (no app\ subdir)
+                ExeLeaf           = 'Grok Bot.exe'
+                ExeRelPath        = 'Grok Bot.exe'
+                AsarRelPath       = 'resources\app.asar'
+                ProcessName       = @('Grok Bot')
+                ShortcutIconRel   = $null           # exe embeds its own real icon; use exe,0
+                TaskbarAumid      = $null           # non-packaged; exe icon is fine on the taskbar
+                NodeStrategy      = 'electron-as-node'   # run the copied exe with ELECTRON_RUN_AS_NODE=1
+                NodeRelPath       = $null
+                WatcherRunName    = 'GrokBotRtlPatchWatcher'
+                RemoveFromCopy    = @()             # no app-update.yml; the updater is gated by LaunchEnv
+                AssertFuseOff     = $true
+                FuseScanRelPath   = $null           # fuse wire is in the exe itself; default to ExeRelPath
+                # Shares a single-instance lock with the original, like T3 Code.
+                SharedSingleInstance = $true
+                UserDataDir       = (Join-Path $env:APPDATA 'Grok Bot')
+                RendererPayloads  = @('desktop-rtl-patch.js')
+                MainProcessSpec   = $null
+                ServicesToHalt    = @()
+                TakeOwnershipDirs = @()
+                ExeHashPatch      = $null
+                CodeSign          = $null
+                UpdateHelper      = $null
+                LaunchEnv         = @{ SAND_DISABLE_UPDATES = '1' }   # keep the COPY's updater inert
+                LaunchScript      = 'Launch-GrokBotRtl.vbs'           # generated in StateDir; the shortcut runs it
             }
         }
     }
@@ -717,13 +787,27 @@ function Clear-RtlRendererCache {
 # which would start the app as a headless Node process that exits immediately.
 # Strip them for the launch, then restore.
 function Start-RtlCopyApp {
-    $exe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
+    $p = $script:ActiveProfile
+    $exe = Join-Path $script:CopyRoot $p.ExeRelPath
     if (-not (Test-Path $exe)) { return $false }
     $saveRun = $env:ELECTRON_RUN_AS_NODE; $saveAsar = $env:ELECTRON_NO_ASAR
     Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
     Remove-Item Env:ELECTRON_NO_ASAR -ErrorAction SilentlyContinue
+    # The GUI and tray "open" actions do NOT go through the shortcut, so the profile's
+    # LaunchEnv (Grok Bot's SAND_DISABLE_UPDATES=1, which keeps the copy's own updater
+    # from overwriting the patched asar) has to be applied here too. Set it only for the
+    # duration of the launch and restore the previous value exactly - including removing
+    # a variable that did not exist before.
+    $saved = @{}
+    if ($p.LaunchEnv) {
+        foreach ($k in @($p.LaunchEnv.Keys)) {
+            $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process')
+            [Environment]::SetEnvironmentVariable($k, [string]$p.LaunchEnv[$k], 'Process')
+        }
+    }
     try { Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe -Parent) }
     finally {
+        foreach ($k in @($saved.Keys)) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
         if ($saveRun)  { $env:ELECTRON_RUN_AS_NODE = $saveRun }
         if ($saveAsar) { $env:ELECTRON_NO_ASAR = $saveAsar }
     }
@@ -1300,6 +1384,54 @@ public static class RtlShortcutId {
     catch { Write-RtlLog "could not set taskbar identity on '$Lnk': $($_.Exception.Message)" }
 }
 
+# Some apps must only ever be launched with extra environment set (currently Grok Bot,
+# whose own updater would otherwise overwrite the patched copy's app.asar - see the
+# grokbot profile). A .lnk cannot carry environment variables, so for a profile that
+# declares LaunchEnv + LaunchScript we generate a tiny .vbs next to the app state that
+# sets those variables in ITS OWN process environment (inherited by the app it starts)
+# and then launches the copy with no console window. Nothing outside this process tree
+# is touched - the user/machine environment is never written.
+# Returns the launcher path, or $null for profiles with no LaunchEnv (the common case,
+# where the shortcut points straight at the exe exactly as before).
+function New-RtlLaunchScript {
+    param($Profile = $script:ActiveProfile)
+    if (-not ($Profile.LaunchScript -and $Profile.LaunchEnv)) { return $null }
+    $exe  = Join-Path $script:CopyRoot $Profile.ExeRelPath
+    $work = Join-RtlTree $script:CopyRoot $Profile.AppSubdir
+    # VBScript string literals escape a double quote by doubling it.
+    $q = { param([string]$v) '"' + ($v -replace '"', '""') + '"' }
+    $lines = @(
+        "' $($Profile.LaunchScript) - generated by the Desktop RTL patch. Do not edit:",
+        "' it is rewritten from the app profile on every install and update.",
+        "' Starts the patched $($Profile.DisplayName) copy with the environment that profile",
+        "' requires, with no console window. Only THIS process' environment is set.",
+        'Option Explicit',
+        'Dim sh, env',
+        'Set sh = CreateObject("WScript.Shell")',
+        'Set env = sh.Environment("PROCESS")',
+        "' Never hand the app the asar-editor's Electron-as-node flags: inherited from a",
+        "' parent that has them set, the app would start headless and exit immediately.",
+        "' (Remove raises when the name is absent, which is the normal case.)",
+        'On Error Resume Next',
+        'env.Remove "ELECTRON_RUN_AS_NODE"',
+        'env.Remove "ELECTRON_NO_ASAR"',
+        'On Error GoTo 0'
+    )
+    foreach ($k in @($Profile.LaunchEnv.Keys | Sort-Object)) {
+        $lines += ("env(" + (& $q $k) + ") = " + (& $q ([string]$Profile.LaunchEnv[$k])))
+    }
+    $lines += @(
+        ("sh.CurrentDirectory = " + (& $q $work)),
+        ("sh.Run " + (& $q ('"' + $exe + '"')) + ", 1, False")
+    )
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+    $path = Join-Path $script:StateDir $Profile.LaunchScript
+    # ASCII: the generated script is machine-written and holds only paths + env names.
+    [System.IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.ASCIIEncoding))
+    Write-RtlLog "Wrote launcher $path (env: $(($Profile.LaunchEnv.Keys | Sort-Object) -join ', '))"
+    return $path
+}
+
 function New-RtlShortcut {
     # Differentiate from the regular app by NAME only ("<App> (RTL)"). Point the icon at the
     # app's own branded .ico (ShortcutIconRel, relative to the copy's app tree) when present,
@@ -1322,11 +1454,23 @@ function New-RtlShortcut {
         try { $s = Resolve-RtlSource; $se = Join-Path $s.AppDir $p.ExeLeaf; if (Test-Path $se) { $iconExe = $se } } catch {}
         $iconLoc = "$iconExe,0"; $iconRes = $null
     }
+    # Profiles with a LaunchEnv go through their generated .vbs (run by wscript.exe, so no
+    # console window) instead of pointing straight at the exe - that is the only way a
+    # shortcut can guarantee the app starts with the required environment. The icon still
+    # comes from the app's own exe, so the shortcut looks identical to the other apps'.
+    # Profiles without a LaunchEnv keep the original exe target byte-for-byte.
+    $target = $exe; $lnkArgs = ''
+    $launcher = New-RtlLaunchScript -Profile $p
+    if ($launcher) {
+        $target = Join-Path $env:WINDIR 'System32\wscript.exe'
+        $lnkArgs = '"' + $launcher + '"'
+    }
     $ws = New-Object -ComObject WScript.Shell
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {
         try {
             $sc = $ws.CreateShortcut($lnk)
-            $sc.TargetPath       = $exe
+            $sc.TargetPath       = $target
+            $sc.Arguments        = $lnkArgs
             $sc.WorkingDirectory = $work
             $sc.IconLocation     = $iconLoc
             $sc.Description       = $p.ShortcutDesc
@@ -2431,8 +2575,15 @@ function Invoke-CodexRtlUninstall {
         foreach ($lnk in $script:ShortcutPaths) {
             if (Test-Path $lnk) { try { Remove-Item -LiteralPath $lnk -Force; Write-RtlLog "removed $lnk" } catch { $uncertain = $true } }
         }
-        foreach ($f in @($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker)) {
-            if ($f -and (Test-Path $f)) { try { Remove-Item -LiteralPath $f -Force } catch { $uncertain = $true } }
+        # The generated launcher (LaunchScript profiles) lives in StateDir next to the state,
+        # and a plain uninstall KEEPS StateDir (for the logs), so it has to be deleted here or
+        # it is orphaned. Listed explicitly rather than relying on -PurgeLogs.
+        $launcher = if ($script:ActiveProfile.LaunchScript) { Join-Path $script:StateDir $script:ActiveProfile.LaunchScript } else { $null }
+        foreach ($f in @($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, $launcher)) {
+            if ($f -and (Test-Path $f)) {
+                try { Remove-Item -LiteralPath $f -Force; Write-RtlLog "removed $f" }
+                catch { $uncertain = $true; Write-RtlLog "could not remove $f : $($_.Exception.Message)" }
+            }
         }
         # Remove this app's LEGACY per-app Run value if it is still ours (the agent replaces it).
         try {

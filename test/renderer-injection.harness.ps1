@@ -116,7 +116,45 @@ try {
     $sig2 = (Resolve-RtlSource -Profile $inlineProfile).Signature
     Assert-True ($sig1 -ne $sig2) 'direct source signature includes renderer index'
 
-    Assert-True ((Get-RtlAppIds) -join ',' -eq 'codex,opencode,traycer,t3code') 'profile catalog is app-id source of truth'
+    Assert-True ((Get-RtlAppIds) -join ',' -eq 'codex,opencode,traycer,t3code,grokbot') 'profile catalog is app-id source of truth'
+
+    # Grok Bot: asar-injection profile (like OpenCode) whose copy must always be launched
+    # with SAND_DISABLE_UPDATES=1 so its own updater cannot overwrite the patched asar.
+    $grok = Get-RtlProfile 'grokbot'
+    Assert-True ($grok.ExeRelPath -eq 'Grok Bot.exe') 'grokbot exe rel path'
+    Assert-True ($grok.AsarRelPath -eq 'resources\app.asar') 'grokbot asar rel path'
+    Assert-True ($grok.NodeStrategy -eq 'electron-as-node') 'grokbot runs its own exe as node'
+    Assert-True ($grok.SharedSingleInstance -eq $true) 'grokbot shares a single-instance lock'
+    Assert-True ($grok.LaunchEnv.SAND_DISABLE_UPDATES -eq '1') 'grokbot disables its self-updater via LaunchEnv'
+    Assert-True ($grok.LaunchScript -eq 'Launch-GrokBotRtl.vbs') 'grokbot declares a launcher script'
+    Assert-True (-not $grok.RendererMode) 'grokbot patches the asar renderer (no loose/inline mode)'
+
+    # Regression guard: extending the launch mechanism must not change how the four
+    # existing apps start - they keep a direct exe shortcut and no environment override.
+    foreach ($id in @('codex', 'opencode', 'traycer', 't3code')) {
+        $q = Get-RtlProfile $id
+        Assert-True ($null -eq $q.LaunchEnv) "$id has no launch environment"
+        Assert-True ($null -eq $q.LaunchScript) "$id has no launcher script"
+    }
+
+    # The launcher is generated only for LaunchEnv profiles, sets exactly the declared
+    # variables, and launches the copy's exe from the copy root.
+    Set-RtlActiveApp t3code | Out-Null
+    Assert-True ($null -eq (New-RtlLaunchScript)) 'no launcher is generated without LaunchEnv'
+    Set-RtlActiveApp grokbot | Out-Null
+    $launcher = New-RtlLaunchScript
+    Assert-True ($launcher -eq (Join-Path $grok.StateDir 'Launch-GrokBotRtl.vbs')) 'launcher lands in the app state dir'
+    $vbs = [IO.File]::ReadAllText($launcher)
+    Assert-True ($vbs -match '(?m)^env\("SAND_DISABLE_UPDATES"\) = "1"\r?$') 'launcher sets SAND_DISABLE_UPDATES=1'
+    Assert-True ($vbs -match [regex]::Escape('sh.Run """' + (Join-Path $grok.CopyRoot 'Grok Bot.exe') + '"""')) 'launcher runs the copy exe quoted'
+    Assert-True ($vbs -match [regex]::Escape('sh.CurrentDirectory = "' + $grok.CopyRoot + '"')) 'launcher works from the copy root'
+    Assert-True ($vbs -match 'env\.Remove "ELECTRON_RUN_AS_NODE"' -and $vbs -match 'env\.Remove "ELECTRON_NO_ASAR"') 'launcher strips the electron-as-node flags'
+
+    # Uninstall removes the launcher even though it keeps the logs folder.
+    Assert-True (Test-Path $launcher) 'launcher exists before uninstall'
+    New-Item -ItemType Directory -Force -Path $grok.CopyRoot | Out-Null
+    Invoke-CodexRtlUninstall | Out-Null
+    Assert-True (-not (Test-Path $launcher)) 'plain uninstall removes the launcher'
 
     Write-Host "PASS: $script:passed assertions"
 } finally {
