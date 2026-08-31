@@ -479,6 +479,14 @@ function Invoke-HerdrRtlInstall {
         # file outside the copy, so it can always be refreshed.
         try { Sync-HerdrRtlConfig -Source $Source -Profile $Profile | Out-Null }
         catch { Write-RtlLog "config sync error: $($_.Exception.Message)" }
+        # Re-assert the shortcuts. A shortcut can go missing without the install
+        # changing at all (a cleanup tool, a profile sync, a stray delete), and
+        # without this the only way back is a forced reinstall.
+        if (@($script:ShortcutPaths | Where-Object { -not (Test-Path $_) })) {
+            Write-RtlLog 'A shortcut is missing; recreating it.'
+            try { New-HerdrRtlShortcut -Profile $Profile }
+            catch { Write-RtlLog "shortcut refresh failed: $($_.Exception.Message)" }
+        }
         Set-RtlStep 'done' 100
         return
     }
