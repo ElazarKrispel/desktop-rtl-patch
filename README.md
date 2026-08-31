@@ -40,7 +40,7 @@ direction changes: the code block stays left-to-right in both.</sub></p>
 
 ## Works with
 
-**ChatGPT / Codex** &nbsp;&middot;&nbsp; **Grok Bot** &nbsp;&middot;&nbsp; **OpenCode** &nbsp;&middot;&nbsp; **Traycer** &nbsp;&middot;&nbsp; **T3 Code**
+**ChatGPT / Codex** &nbsp;&middot;&nbsp; **Grok Bot** &nbsp;&middot;&nbsp; **OpenCode** &nbsp;&middot;&nbsp; **Traycer** &nbsp;&middot;&nbsp; **T3 Code** &nbsp;&middot;&nbsp; **Herdr**
 
 Each app gets its own patched copy and its own "(RTL)" shortcut, and you can install as many of
 them as you like. Names are used only to say what this patches; see the
@@ -211,6 +211,10 @@ Compare the result with the line in `SHA256SUMS.txt` on the
 * **[`scripts/lib/asar-edit.mjs`](scripts/lib/asar-edit.mjs)** surgically injects the script into
   `app.asar`: it appends to the data section and rewrites the header, with no full repack, then
   verifies the result.
+* **[`scripts/lib/desktop-rtl-herdr.ps1`](scripts/lib/desktop-rtl-herdr.ps1)** handles the one
+  target that is not an Electron app. Herdr is a native Rust terminal program with no renderer to
+  inject, so its RTL fix is compiled into the binary and this file installs that build beside the
+  official one, with its own private settings, session and sockets.
 
 ## Per-app notes
 
@@ -293,13 +297,36 @@ Compare the result with the line in `SHA256SUMS.txt` on the
 </details>
 
 <details>
+<summary><b>Herdr</b> - terminal workspace manager (native binary, not Electron)</summary>
+
+Herdr is a Rust terminal program, not an Electron app, so there is no HTML renderer to patch. Its
+RTL support is a display-only pass inside Herdr itself: the composed frame is reordered into visual
+order just before it is painted, because Windows Terminal and the classic console run no
+bidirectional algorithm of their own and print cells in the order they receive them.
+
+* The fix lives in a fork, [ElazarKrispel/herdr](https://github.com/ElazarKrispel/herdr), and this
+  tool installs that prebuilt binary as **Herdr (RTL)**. Your official Herdr install is only read,
+  never modified or replaced.
+* The RTL build keeps its own `config.toml`, `session.json`, sockets and logs under
+  `%LOCALAPPDATA%\RtlPatch\herdr`, so the two can run side by side and the official Herdr's state
+  is untouched. On first install your official settings are copied across.
+* Everything except the pixels stays in logical order: scrollback, selection and copy,
+  `herdr pane read`, and agent detection are unaffected, and mouse positions are mapped back before
+  they reach the program in the pane.
+* Hebrew is fully fixed. Arabic and Persian get the correct order but keep isolated letter forms,
+  because the host terminals do not shape them either.
+
+</details>
+
+<details>
 <summary><b>All supported apps</b> - and how this differs from other RTL patches</summary>
 
 **The original install is never modified.** Only a separate copy is ever written, guarded by a
 `[SAFETY]` check that refuses to touch anything outside the tool's own staging and copy folders.
 For ChatGPT/Codex, Grok Bot and OpenCode the copy's `app.asar` is the only edited file (their
 asar-integrity fuse ships disabled); for Traycer and T3 Code only renderer HTML in the copy is
-edited. Other RTL patches flip a fuse on the **original signed binary** and patch the install in
+edited; for Herdr nothing is edited at all, because a separately built binary is installed
+alongside. Other RTL patches flip a fuse on the **original signed binary** and patch the install in
 place; this tool never touches the original.
 
 </details>

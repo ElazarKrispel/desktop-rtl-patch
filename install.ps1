@@ -62,7 +62,7 @@ if ($env:RTL_SILENT) {
     $cli = Join-Path $root.FullName 'scripts\Install-DesktopRtl.ps1'
     if (-not (Test-Path $cli)) { throw 'Installer script not found in the download.' }
     $app = if ($env:RTL_APP) { $env:RTL_APP } else { 'codex' }
-    if ($app -notin @('codex', 'opencode', 'traycer', 't3code', 'grokbot')) { throw "Invalid RTL_APP '$app' (expected codex, opencode, traycer, t3code or grokbot)." }
+    if ($app -notin @('codex', 'opencode', 'traycer', 't3code', 'grokbot', 'herdr')) { throw "Invalid RTL_APP '$app' (expected codex, opencode, traycer, t3code, grokbot or herdr)." }
     Write-Host "Installing (headless) for '$app'..." -ForegroundColor Cyan
     & $psExe -NoProfile -ExecutionPolicy Bypass -File $cli -App $app
     if ($LASTEXITCODE -ne 0) { throw "Headless install failed (exit $LASTEXITCODE). See the log output above." }

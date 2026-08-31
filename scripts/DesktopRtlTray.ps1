@@ -314,7 +314,7 @@ function Build-Watchers {
         foreach ($id in $script:Apps) {
             Set-RtlActiveApp $id | Out-Null
             $src = $null; try { $src = Resolve-RtlSource } catch {}
-            if ($src -and $src.Type -eq 'Direct' -and $src.AsarPath) {
+            if ($src -and (($src.Type -eq 'Direct' -and $src.AsarPath) -or $src.Type -eq 'Herdr')) {
               foreach ($watchPath in @(Get-RtlSourceWatchPaths -Profile $script:ActiveProfile -Source $src)) {
                 $w = New-RtlSourceWatcher -WatchPath $watchPath
                 if ($w) {
@@ -353,7 +353,7 @@ function Invoke-Reconcile {
         foreach ($id in $ids) {
             Set-RtlActiveApp $id | Out-Null
             $src = $null; try { $src = Resolve-RtlSource } catch {}
-            $sigParts += ("{0}|{1}" -f $id, $(if ($src) { "$($src.Type):$($src.AsarPath)" } else { 'none' }))
+            $sigParts += ("{0}|{1}" -f $id, $(if ($src) { "$($src.Type):$(if ($src.AsarPath) { $src.AsarPath } else { $src.ExePath })" } else { 'none' }))
         }
     } finally { Set-RtlActiveApp $save | Out-Null }
     $sig = ($sigParts -join ';')

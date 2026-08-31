@@ -116,7 +116,7 @@ try {
     $sig2 = (Resolve-RtlSource -Profile $inlineProfile).Signature
     Assert-True ($sig1 -ne $sig2) 'direct source signature includes renderer index'
 
-    Assert-True ((Get-RtlAppIds) -join ',' -eq 'codex,opencode,traycer,t3code,grokbot') 'profile catalog is app-id source of truth'
+    Assert-True ((Get-RtlAppIds) -join ',' -eq 'codex,opencode,traycer,t3code,grokbot,herdr') 'profile catalog is app-id source of truth'
 
     # Grok Bot: asar-injection profile (like OpenCode) whose copy must always be launched
     # with SAND_DISABLE_UPDATES=1 so its own updater cannot overwrite the patched asar.
@@ -155,6 +155,118 @@ try {
     New-Item -ItemType Directory -Force -Path $grok.CopyRoot | Out-Null
     Invoke-CodexRtlUninstall | Out-Null
     Assert-True (-not (Test-Path $launcher)) 'plain uninstall removes the launcher'
+
+
+    New-Item -ItemType Directory -Force -Path (Join-Path $temp 'empty-artifact') | Out-Null
+
+    # ---- Herdr: prebuilt native-binary profile -------------------------------
+    $herdr = Get-RtlProfile 'herdr'
+    Assert-True ($herdr.RendererMode -eq 'prebuilt') 'herdr installs a prebuilt binary'
+    Assert-True ($herdr.SourceKind -eq 'herdr') 'herdr uses its own source resolver'
+    Assert-True ($herdr.ExeRelPath -eq 'herdr.exe') 'herdr exe rel path'
+    Assert-True ($null -eq $herdr.AsarRelPath) 'herdr declares no asar'
+    Assert-True ($herdr.NodeStrategy -eq 'none') 'herdr needs no node runtime'
+    Assert-True ($herdr.AssertFuseOff -eq $false) 'herdr has no fuse guard'
+    Assert-True ($null -eq $herdr.UserDataDir) 'herdr has no electron cache to clear'
+    Assert-True ($herdr.WatcherRunName -eq 'HerdrRtlPatchWatcher') 'herdr watcher run name'
+    Assert-True ($herdr.PrebuiltRepo -eq 'ElazarKrispel/herdr') 'herdr prebuilt repo'
+
+    # Version parsing off a standalone release path.
+    Assert-True ((Get-HerdrVersionFromPath -Path 'C:\u\.herdr\packages\standalone\releases\0.8.2-x86_64-pc-windows-msvc\herdr.exe') -eq '0.8.2') 'herdr version parsed from release path'
+    Assert-True ($null -eq (Get-HerdrVersionFromPath -Path 'C:\tools\herdr.exe')) 'herdr version parse declines a plain path'
+
+    # Settings mapping.
+    Assert-True ((Get-HerdrBidiValue -Config ([pscustomobject]@{ enabled = $true; direction = [pscustomobject]@{ policy = 'anyHebrew' } })) -eq 'ltr') 'anyHebrew maps to bidi=ltr'
+    Assert-True ((Get-HerdrBidiValue -Config ([pscustomobject]@{ enabled = $true; direction = [pscustomobject]@{ policy = 'firstStrong' } })) -eq 'auto') 'firstStrong maps to bidi=auto'
+    Assert-True ((Get-HerdrBidiValue -Config ([pscustomobject]@{ enabled = $false; direction = [pscustomobject]@{ policy = 'anyHebrew' } })) -eq 'off') 'disabled maps to bidi=off'
+    Assert-True ((Get-HerdrBidiValue -Config $null) -eq 'ltr') 'missing settings default to bidi=ltr'
+    # Regression: Read-RtlConfig hands back ordered dictionaries, not PSCustomObjects,
+    # and reading them as objects silently reported every app as enabled.
+    Set-RtlActiveApp 'herdr' | Out-Null
+    $liveCfg = Read-RtlConfig
+    Assert-True ($liveCfg.apps.herdr -is [System.Collections.IDictionary]) 'live settings are a dictionary'
+    Assert-True ((Get-HerdrBidiValue -Config $liveCfg.apps.herdr) -eq 'ltr') 'live default settings map to bidi=ltr'
+    $liveCfg.apps.herdr.enabled = $false
+    Assert-True ((Get-HerdrBidiValue -Config $liveCfg.apps.herdr) -eq 'off') 'live disabled settings map to bidi=off'
+    $liveCfg.apps.herdr.enabled = $true
+    $liveCfg.apps.herdr.direction.policy = 'firstStrong'
+    Assert-True ((Get-HerdrBidiValue -Config $liveCfg.apps.herdr) -eq 'auto') 'live firstStrong maps to bidi=auto'
+
+    # TOML key writer: append, replace, and never disturb the rest of the file.
+    $t1 = Set-HerdrTomlKey -Text '' -Section 'terminal' -Key 'bidi' -Value 'ltr'
+    Assert-True ($t1 -match '(?m)^\[terminal\]\r?$' -and $t1 -match '(?m)^bidi = "ltr"\r?$') 'toml writer creates the table'
+    $t2 = Set-HerdrTomlKey -Text $t1 -Section 'terminal' -Key 'bidi' -Value 'auto'
+    Assert-True (($t2 -split "`r`n|`n" | Where-Object { $_ -match '^bidi = ' }).Count -eq 1) 'toml writer replaces rather than duplicates'
+    Assert-True ($t2 -match '(?m)^bidi = "auto"\r?$') 'toml writer wrote the new value'
+    $existing = "[terminal]`r`ndefault_shell = `"pwsh`"`r`n`r`n[ui.toast]`r`ndelivery = `"off`"`r`n"
+    $t3 = Set-HerdrTomlKey -Text $existing -Section 'terminal' -Key 'bidi' -Value 'ltr'
+    Assert-True ($t3 -match 'default_shell = "pwsh"') 'toml writer keeps other keys in the table'
+    Assert-True ($t3 -match '\[ui\.toast\]' -and $t3 -match 'delivery = "off"') 'toml writer keeps later tables'
+    Assert-True ($t3 -match '(?m)^bidi = "ltr"\r?$') 'toml writer adds the key to an existing table'
+    $t4 = Set-HerdrTomlKey -Text "[ui]`r`nx = 1`r`n" -Section 'terminal' -Key 'bidi' -Value 'off'
+    Assert-True ($t4 -match '(?m)^\[terminal\]\r?$' -and $t4 -match 'x = 1') 'toml writer appends a missing table'
+
+    # Source resolution against a fake standalone install.
+    $fakeRel = Join-Path $temp 'fakeherdr\packages\standalone\releases\9.9.9-x86_64-pc-windows-msvc'
+    New-Item -ItemType Directory -Force -Path $fakeRel | Out-Null
+    [IO.File]::WriteAllText((Join-Path $fakeRel 'herdr.exe'), 'not a real binary')
+    $fakeProfile = Get-RtlProfile 'herdr'
+    $fakeProfile.SourceRoots = @($fakeRel)
+    $fakeSrc = Resolve-HerdrSource -Profile $fakeProfile
+    Assert-True ($null -ne $fakeSrc) 'herdr source resolves from a standalone release tree'
+    Assert-True ($fakeSrc.Version -eq '9.9.9') 'herdr source reports the release version'
+    Assert-True ($fakeSrc.Type -eq 'Herdr') 'herdr source type'
+    Assert-True ($fakeSrc.Signature -like 'herdr:9.9.9|rtl=*') 'herdr signature folds in version and rtl build'
+    Assert-True ($null -eq $fakeSrc.AsarPath) 'herdr source has no asar path'
+    $missing = Get-RtlProfile 'herdr'
+    $missing.SourceRoots = @((Join-Path $temp 'nope'))
+    Assert-True ($null -eq (Resolve-HerdrSource -Profile $missing)) 'herdr source returns null when not installed'
+
+    # Watch paths follow the binary, not an asar.
+    Assert-True ((Get-RtlSourceWatchPaths -Profile $fakeProfile -Source $fakeSrc) -contains $fakeSrc.ExePath) 'herdr watches the installed binary'
+
+    # Structural validation accepts a binary-only source and rejects a missing exe.
+    Assert-True (Test-CodexSource -Source $fakeSrc -Profile $fakeProfile) 'herdr source passes validation'
+    $broken = [pscustomobject]@{ Type = 'Herdr'; Version = '1'; Signature = 's'; AppDir = $fakeRel; AsarPath = $null; ExePath = (Join-Path $fakeRel 'gone.exe') }
+    Assert-Throws { Test-CodexSource -Source $broken -Profile $fakeProfile } 'herdr validation rejects a missing binary' 'LAYOUT'
+
+    # Artifact discovery.
+    $artRoot = Join-Path $temp 'artifact-root'
+    New-Item -ItemType Directory -Force -Path (Join-Path $artRoot 'inner') | Out-Null
+    [IO.File]::WriteAllText((Join-Path $artRoot 'inner\herdr.exe'), 'x')
+    Assert-True ((Find-HerdrExeRoot -Root $artRoot) -eq (Join-Path $artRoot 'inner')) 'artifact root found one level down'
+    Assert-Throws { Find-HerdrExeRoot -Root (Join-Path $temp 'empty-artifact') } 'artifact root rejects a tree without herdr.exe' 'ARTIFACT'
+
+    # The safety guard still refuses to write outside our own staging or copy.
+    Set-RtlActiveApp 'herdr' | Out-Null
+    Assert-Throws { Assert-RtlWriteAllowed -Path (Join-Path $fakeRel 'herdr.exe') -Profile $herdr } 'herdr write guard refuses the official install' 'SAFETY'
+    Assert-True (Assert-RtlWriteAllowed -Path (Join-Path $herdr.Staging 'herdr.exe') -Profile $herdr) 'herdr write guard allows staging'
+
+    # Private data locations never overlap the official ones.
+    $dataDir = Get-HerdrRtlDataDir -Profile $herdr
+    $cfgPath = Get-HerdrRtlConfigPath -Profile $herdr
+    Assert-True ($dataDir.StartsWith($herdr.StateDir, [StringComparison]::OrdinalIgnoreCase)) 'herdr private data lives under our state dir'
+    Assert-True ($cfgPath -like '*\data\herdr\config.toml') 'herdr private config path'
+    Assert-True (-not $cfgPath.StartsWith((Join-Path $env:APPDATA 'herdr'), [StringComparison]::OrdinalIgnoreCase)) 'herdr private config is not the official one'
+
+    # The generated launcher isolates config and state, and runs the copy.
+    $cmdPath = New-HerdrRtlLauncher -Profile $herdr
+    $cmdText = [IO.File]::ReadAllText($cmdPath)
+    Assert-True ($cmdText -match 'set "XDG_CONFIG_HOME=') 'launcher sets XDG_CONFIG_HOME'
+    Assert-True ($cmdText -match 'set "XDG_STATE_HOME=') 'launcher sets XDG_STATE_HOME'
+    Assert-True ($cmdText -match [regex]::Escape($herdr.CopyRoot)) 'launcher runs the RTL copy'
+    Assert-True (-not ($cmdText -match [regex]::Escape((Join-Path $env:APPDATA 'herdr')))) 'launcher never points at the official state'
+
+    # Settings write end to end.
+    $written = Sync-HerdrRtlConfig -Source $fakeSrc -Profile $herdr
+    Assert-True ($written -eq 'ltr') 'config sync returns the applied mode'
+    Assert-True ((([IO.File]::ReadAllText($cfgPath)) -match '(?m)^bidi = "ltr"\r?$')) 'config sync wrote bidi into the private config'
+
+    # Uninstall clears everything we created for herdr.
+    New-Item -ItemType Directory -Force -Path $herdr.CopyRoot | Out-Null
+    Invoke-CodexRtlUninstall | Out-Null
+    Assert-True (-not (Test-Path $herdr.CopyRoot)) 'herdr uninstall removes the copy'
+    Assert-True (-not (Test-Path $cmdPath)) 'herdr uninstall removes the launcher'
 
     Write-Host "PASS: $script:passed assertions"
 } finally {

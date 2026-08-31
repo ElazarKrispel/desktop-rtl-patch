@@ -19,6 +19,10 @@
 # every consumer (GUI, tray, settings, CLI) shares one Get-RtlHebrewError.
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
+# Herdr is a native Rust TUI, not an Electron app, so its whole install path differs
+# from the injection modes above. It lives in a sibling file to keep this one focused.
+$script:_herdrPath = Join-Path $PSScriptRoot 'desktop-rtl-herdr.ps1'
+if (Test-Path $script:_herdrPath) { . $script:_herdrPath }
 
 $script:PatchVersion  = '2.4.0'
 $script:SchemaVersion = 2
@@ -478,6 +482,63 @@ function Get-RtlProfile {
                 LaunchScript      = 'Launch-GrokBotRtl.vbs'           # generated in StateDir; the shortcut runs it
             }
         }
+        'herdr' = {
+            # Herdr (herdrdev/herdr) - a single Rust binary that draws a terminal UI with
+            # ratatui over a vendored libghostty VT engine. There is no Electron, no asar,
+            # no renderer HTML and no JavaScript, so nothing in the injection pipeline
+            # applies. The RTL fix is compiled into the binary (a display-only BiDi pass
+            # over each frame) and ships from our fork, so this profile INSTALLS a prebuilt
+            # herdr.exe beside the official one instead of patching a copy of it.
+            # The official install and its state are only ever read. See desktop-rtl-herdr.ps1.
+            $base = Join-Path $env:LOCALAPPDATA 'RtlPatch\herdr'
+            return [pscustomobject]@{
+                Id                = 'herdr'
+                DisplayName       = 'Herdr'
+                ShortcutLabel     = 'Herdr (RTL)'
+                ShortcutDesc      = 'Herdr with Hebrew / RTL support'
+                Mode              = 'copy'
+                RequiresElevation = $false
+                AppxName          = $null
+                SourceKind        = 'herdr'
+                SourceRoots       = @(
+                    (Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin'),
+                    (Join-Path $env:USERPROFILE '.herdr\packages\standalone\current')
+                )
+                StateDir          = $base
+                CopyRoot          = (Join-Path $base 'copy')
+                Staging           = (Join-Path $base 'copy.staging')
+                OldRoot           = (Join-Path $base 'copy.old')
+                TargetDir         = $null
+                AppSubdir         = ''
+                ExeLeaf           = 'herdr.exe'
+                ExeRelPath        = 'herdr.exe'
+                AsarRelPath       = $null          # no asar anywhere in this app
+                ProcessName       = @('herdr')
+                ShortcutIconRel   = $null
+                TaskbarAumid      = $null
+                NodeStrategy      = 'none'         # nothing to run: the fix is compiled in
+                NodeRelPath       = $null
+                WatcherRunName    = 'HerdrRtlPatchWatcher'
+                RemoveFromCopy    = @()
+                AssertFuseOff     = $false
+                FuseScanRelPath   = $null
+                # Not an HTML renderer at all: we install a prebuilt binary.
+                RendererMode      = 'prebuilt'
+                RendererDirRel    = $null
+                UserDataDir       = $null          # no Electron cache to clear
+                RendererPayloads  = @()
+                PrebuiltRepo      = 'ElazarKrispel/herdr'
+                PrebuiltTag       = 'v0.8.2-rtl.1'
+                MainProcessSpec   = $null
+                ServicesToHalt    = @()
+                TakeOwnershipDirs = @()
+                ExeHashPatch      = $null
+                CodeSign          = $null
+                UpdateHelper      = $null
+                LaunchEnv         = $null          # the generated .cmd carries the environment
+                LaunchScript      = $null          # New-HerdrRtlShortcut writes its own launcher
+            }
+        }
     }
     if ($List) { return @($profiles.Keys) }
     if (-not $profiles.Contains($AppId)) { throw "[PROFILE] Unknown app id: $AppId" }
@@ -888,6 +949,7 @@ function Resolve-RtlSource {
     switch ($Profile.SourceKind) {
         'codex'  { return Resolve-CodexSource }
         'direct' { return Resolve-DirectSource -Profile $Profile }
+        'herdr'  { return Resolve-HerdrSource -Profile $Profile }
         default  { throw "[PROFILE] Unknown source kind for $($Profile.Id): $($Profile.SourceKind)" }
     }
 }
@@ -907,6 +969,9 @@ function Assert-RtlT3Layout {
 function Get-RtlSourceWatchPaths {
     param($Profile = $script:ActiveProfile, $Source)
     if (-not $Source) { return @() }
+    # Prebuilt targets have no asar; watch the installed binary so an upstream update
+    # is noticed and the matching RTL build is fetched.
+    if ($Profile.RendererMode -eq 'prebuilt') { return @($Source.ExePath) }
     $paths = @($Source.AsarPath)
     if ($Profile.RendererMode -in @('dir', 'inline')) {
         $paths += Join-Path (Join-Path $Source.AppDir $Profile.RendererDirRel) 'index.html'
@@ -921,6 +986,14 @@ function Test-CodexSource {
     $name = $Profile.DisplayName
     if (-not $Source)                      { throw "[NOCODEX] No $name source found." }
     if (-not (Test-Path $Source.AppDir))   { throw "[LAYOUT] $name app folder missing: $($Source.AppDir)" }
+    if ($Profile.RendererMode -eq 'prebuilt') {
+        # Native binary: there is no asar, no renderer and no Node runtime to validate.
+        # We only need the official install present, to know which version to match.
+        if (-not $Source.ExePath -or -not (Test-Path $Source.ExePath)) {
+            throw "[LAYOUT] $name executable missing: $($Source.ExePath)"
+        }
+        return $true
+    }
     if (-not (Test-Path $Source.AsarPath)) { throw "[LAYOUT] $name app.asar missing: $($Source.AsarPath)" }
     if ($Profile.RendererMode -eq 'inline') { Assert-RtlT3Layout -Source $Source -Profile $Profile | Out-Null }
     try {
@@ -1108,6 +1181,18 @@ function Sync-RtlConfigAsset {
     param([string]$AppId = 'codex', [switch]$AllowExternalNodeFallback)
     if (-not (Test-Path $script:ConfigFile)) { return $false }
     $prof = Get-RtlProfile $AppId
+    if ($prof.RendererMode -eq 'prebuilt') {
+        # No asset inside the app to rewrite: settings live in the RTL build's own
+        # config file, which can be updated at any time, even while it is running.
+        if (-not (Test-Path (Join-Path $prof.CopyRoot 'herdr.exe'))) { return $false }
+        $cur = Get-RtlConfigHash
+        $applied = if (Test-Path $script:ConfigAppliedMarker) { (Get-Content $script:ConfigAppliedMarker -Raw).Trim() } else { '' }
+        if ($cur -and $cur -eq $applied) { return $false }
+        Sync-HerdrRtlConfig -Source (Resolve-RtlSource -Profile $prof) -Profile $prof | Out-Null
+        Set-RtlConfigApplied
+        Write-RtlLog 'Applied pending settings to the RTL build config.'
+        return $true
+    }
     $liveTarget = if ($prof.RendererMode -in @('dir','inline')) { Join-Path (Join-RtlTree $prof.CopyRoot $prof.RendererDirRel) 'index.html' } else { Join-Path $prof.CopyRoot $prof.AsarRelPath }
     if (-not (Test-Path $liveTarget)) { return $false }
     $cur = Get-RtlConfigHash
@@ -1707,6 +1792,14 @@ function Invoke-CodexRtlUpdate {
         }
         Test-CodexSource -Source $src | Out-Null   # throws [LAYOUT]/[NODE] on structural problems
 
+        if ($p.RendererMode -eq 'prebuilt') {
+            # Native-binary target (Herdr): the RTL fix is compiled into the binary, so
+            # there is nothing to copy from the user's install and nothing to inject.
+            # Everything below this point assumes an Electron tree; see desktop-rtl-herdr.ps1.
+            Invoke-HerdrRtlInstall -Source $src -Force:$Force -Auto:$Auto -Profile $p
+            return
+        }
+
         $state   = Read-RtlState
         $patchJs = Get-PatchJsPath
         if (-not $patchJs) { throw 'desktop-rtl-patch.js not found.' }
@@ -2066,6 +2159,7 @@ function Copy-RtlBin {
     $items = @(
         @{ src = 'scripts\lib\desktop-rtl-lib.ps1'; dst = 'desktop-rtl-lib.ps1';   req = $true },
         @{ src = 'scripts\lib\desktop-rtl-errors.ps1'; dst = 'desktop-rtl-errors.ps1'; req = $false },
+        @{ src = 'scripts\lib\desktop-rtl-herdr.ps1'; dst = 'desktop-rtl-herdr.ps1'; req = $false },
         @{ src = 'scripts\lib\asar-edit.mjs';     dst = 'asar-edit.mjs';        req = $true },
         @{ src = 'src\desktop-rtl-patch.js';        dst = 'desktop-rtl-patch.js';   req = $true },
         @{ src = 'scripts\Watch-DesktopRtl.ps1';    dst = 'Watch-DesktopRtl.ps1';   req = $true },
@@ -2579,7 +2673,24 @@ function Invoke-CodexRtlUninstall {
         # and a plain uninstall KEEPS StateDir (for the logs), so it has to be deleted here or
         # it is orphaned. Listed explicitly rather than relying on -PurgeLogs.
         $launcher = if ($script:ActiveProfile.LaunchScript) { Join-Path $script:StateDir $script:ActiveProfile.LaunchScript } else { $null }
-        foreach ($f in @($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, $launcher)) {
+        # Prebuilt targets generate their own launcher and keep a private data tree
+        # (their own config, session and sockets) beside it. Both are entirely ours, so
+        # a clean uninstall takes them with it. The official install is never touched.
+        $extraFiles = @()
+        $extraDirs = @()
+        if ($script:ActiveProfile.RendererMode -eq 'prebuilt') {
+            $extraFiles += (Join-Path $script:StateDir 'Herdr-RTL.cmd')
+            $extraDirs += (Join-Path $script:StateDir 'data')
+            $extraDirs += (Join-Path $script:StateDir 'state')
+            $extraDirs += (Join-Path $script:StateDir 'artifact.work')
+        }
+        foreach ($d in $extraDirs) {
+            if (Test-Path $d) {
+                try { Remove-Item -LiteralPath $d -Recurse -Force; Write-RtlLog "removed $d" }
+                catch { $uncertain = $true; Write-RtlLog "could not remove $d : $($_.Exception.Message)" }
+            }
+        }
+        foreach ($f in (@($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, $launcher) + $extraFiles)) {
             if ($f -and (Test-Path $f)) {
                 try { Remove-Item -LiteralPath $f -Force; Write-RtlLog "removed $f" }
                 catch { $uncertain = $true; Write-RtlLog "could not remove $f : $($_.Exception.Message)" }
