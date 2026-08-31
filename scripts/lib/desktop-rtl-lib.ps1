@@ -1814,6 +1814,13 @@ function Invoke-CodexRtlUpdate {
             # Apply any settings change made while the RTL copy was open (now that a
             # pass is running and it may be closed).
             try { Sync-RtlConfigAsset -AppId $p.Id -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null } catch { Write-RtlLog "config sync error: $($_.Exception.Message)" }
+            # Re-assert the shortcuts. They are only created on a real update, so a
+            # shortcut that disappears for any other reason (a cleanup tool, a profile
+            # sync, a stray delete) would otherwise need a forced reinstall to return.
+            if (@($script:ShortcutPaths | Where-Object { -not (Test-Path $_) })) {
+                Write-RtlLog 'A shortcut is missing; recreating it.'
+                try { New-RtlShortcut } catch { Write-RtlLog "shortcut refresh failed: $($_.Exception.Message)" }
+            }
             Set-RtlStep 'done' 100
             return
         }

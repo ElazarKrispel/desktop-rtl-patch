@@ -5,6 +5,24 @@ $oldLocal = $env:LOCALAPPDATA; $oldRoam = $env:APPDATA
 $env:LOCALAPPDATA = Join-Path $temp 'local'; $env:APPDATA = Join-Path $temp 'roaming'
 . (Join-Path $repo 'scripts\lib\desktop-rtl-lib.ps1')
 
+# Shortcut paths come from [Environment]::GetFolderPath, which resolves the REAL
+# Start menu and Desktop no matter what APPDATA says. Without this the uninstall
+# assertions below delete the user's actual "(RTL)" shortcuts, which is how the
+# Grok Bot one went missing. Wrap Set-RtlActiveApp so every call redirects them
+# into the temp tree instead.
+$script:ShortcutSandbox = Join-Path $temp 'shortcuts'
+New-Item -ItemType Directory -Force -Path $script:ShortcutSandbox | Out-Null
+$script:RealSetRtlActiveApp = ${function:Set-RtlActiveApp}
+function Set-RtlActiveApp {
+    param([string]$AppId = 'codex')
+    & $script:RealSetRtlActiveApp $AppId | Out-Null
+    $script:ShortcutStart   = Join-Path $script:ShortcutSandbox ($script:ShortcutLabel + '.lnk')
+    $script:ShortcutDesktop = Join-Path $script:ShortcutSandbox ('Desktop - ' + $script:ShortcutLabel + '.lnk')
+    $script:ShortcutPath    = $script:ShortcutStart
+    $script:LegacyShortcuts = @()
+    $script:ShortcutPaths   = @($script:ShortcutStart, $script:ShortcutDesktop)
+}
+
 $script:passed = 0
 function Assert-True([bool]$Value, [string]$Name) {
     if (-not $Value) { throw "FAIL: $Name" }
@@ -267,6 +285,12 @@ try {
     Invoke-CodexRtlUninstall | Out-Null
     Assert-True (-not (Test-Path $herdr.CopyRoot)) 'herdr uninstall removes the copy'
     Assert-True (-not (Test-Path $cmdPath)) 'herdr uninstall removes the launcher'
+
+    # The suite must never touch the real Start menu or Desktop.
+    Set-RtlActiveApp 'herdr' | Out-Null
+    $realPrograms = [Environment]::GetFolderPath('Programs')
+    Assert-True (-not $script:ShortcutStart.StartsWith($realPrograms, [StringComparison]::OrdinalIgnoreCase)) 'tests never write to the real Start menu'
+    Assert-True ($script:ShortcutStart.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase)) 'test shortcuts stay in the temp tree'
 
     Write-Host "PASS: $script:passed assertions"
 } finally {
