@@ -275,6 +275,12 @@ try {
     Assert-True ($cmdText -match [regex]::Escape($herdr.CopyRoot)) 'launcher runs the RTL copy'
     Assert-True (-not ($cmdText -match [regex]::Escape((Join-Path $env:APPDATA 'herdr')))) 'launcher never points at the official state'
 
+    # The shortcut window closes the instant the script ends, so a failure would be
+    # invisible. Both failure paths have to hold the window open instead.
+    Assert-True ($cmdText -match '(?m)^if not exist ') 'launcher checks the exe is there'
+    Assert-True ($cmdText -match '(?m)^if errorlevel 1 \(') 'launcher reacts to a non-zero exit'
+    Assert-True (([regex]::Matches($cmdText, '(?m)^\s*pause\s*$')).Count -eq 2) 'both launcher failure paths pause'
+
     # The shortcut must be launchable. Windows Terminal starts its command with
     # CreateProcess, which cannot execute a .cmd at all, so handing the launcher
     # straight to wt.exe fails with "the system cannot find the file specified".

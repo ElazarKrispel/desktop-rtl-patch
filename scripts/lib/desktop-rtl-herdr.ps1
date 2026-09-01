@@ -404,7 +404,21 @@ function New-HerdrRtlLauncher {
         "set `"XDG_CONFIG_HOME=$data`"",
         "set `"XDG_STATE_HOME=$state`"",
         "set `"HERDR_BIN_PATH=$exe`"",
-        "`"$exe`" %*"
+        "if not exist `"$exe`" (",
+        "  echo Herdr ^(RTL^) is not installed: `"$exe`" is missing.",
+        '  echo Reinstall it from the Desktop RTL patch installer.',
+        '  pause',
+        '  exit /b 1',
+        ')',
+        "`"$exe`" %*",
+        'rem The shortcut runs this in its own window, which Windows closes the moment',
+        'rem the script ends. On a clean quit that is what we want; on a failure it',
+        'rem would hide the reason, so hold the window open and show the exit code.',
+        'if errorlevel 1 (',
+        '  echo.',
+        '  echo Herdr exited with error level %errorlevel%.',
+        '  pause',
+        ')'
     )
     $path = Join-Path $script:StateDir 'Herdr-RTL.cmd'
     [IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.ASCIIEncoding))
