@@ -275,6 +275,17 @@ try {
     Assert-True ($cmdText -match [regex]::Escape($herdr.CopyRoot)) 'launcher runs the RTL copy'
     Assert-True (-not ($cmdText -match [regex]::Escape((Join-Path $env:APPDATA 'herdr')))) 'launcher never points at the official state'
 
+    # The shortcut must be launchable. Windows Terminal starts its command with
+    # CreateProcess, which cannot execute a .cmd at all, so handing the launcher
+    # straight to wt.exe fails with "the system cannot find the file specified".
+    New-HerdrRtlShortcut -Profile $herdr
+    Assert-True (Test-Path $script:ShortcutStart) 'herdr shortcut is created'
+    $shellLink = (New-Object -ComObject WScript.Shell).CreateShortcut($script:ShortcutStart)
+    Assert-True ($shellLink.TargetPath -like '*\cmd.exe') 'herdr shortcut runs the launcher through cmd.exe'
+    Assert-True ($shellLink.Arguments -match '(?i)^/c "') 'herdr shortcut passes /c to the shell'
+    Assert-True ($shellLink.Arguments -match [regex]::Escape('Herdr-RTL.cmd')) 'herdr shortcut points at the launcher'
+    Assert-True (-not ($shellLink.TargetPath -like '*wt.exe')) 'herdr shortcut never hands a .cmd to Windows Terminal'
+
     # Settings write end to end.
     $written = Sync-HerdrRtlConfig -Source $fakeSrc -Profile $herdr
     Assert-True ($written -eq 'ltr') 'config sync returns the applied mode'

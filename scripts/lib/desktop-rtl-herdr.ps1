@@ -418,14 +418,17 @@ function New-HerdrRtlLauncher {
 function New-HerdrRtlShortcut {
     param($Profile = $script:ActiveProfile)
     $cmd = New-HerdrRtlLauncher -Profile $Profile
-    $wt = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\wt.exe'
-    if (Test-Path $wt) {
-        $target = $wt
-        $args = '--title "Herdr (RTL)" -- "' + $cmd + '"'
-    } else {
-        $target = Join-Path $env:WINDIR 'System32\cmd.exe'
-        $args = '/c "' + $cmd + '"'
-    }
+    # Point the shortcut straight at cmd.exe running the launcher. Herdr needs a
+    # terminal to draw in, and Windows opens this in whatever the user's default
+    # terminal is, which on Windows 11 is Windows Terminal.
+    #
+    # Deliberately NOT `wt.exe -- <launcher>`: Windows Terminal starts its command
+    # with CreateProcess, which cannot execute a .cmd file at all, so that form
+    # fails with "the system cannot find the file specified" even though the file
+    # is right there. Going through cmd.exe also means one less set of quoting
+    # rules between the shortcut and the program.
+    $target = Join-Path $env:WINDIR 'System32\cmd.exe'
+    $args = '/c "' + $cmd + '"'
     # Icon: take it from the official install's exe, which is present and branded.
     $iconExe = Join-Path $script:CopyRoot 'herdr.exe'
     try {
