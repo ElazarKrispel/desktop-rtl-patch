@@ -2176,6 +2176,7 @@ function Copy-RtlBin {
         @{ src = 'Desktop-RTL-Settings.vbs';        dst = 'Desktop-RTL-Settings.vbs'; req = $false },
         # Brand icon for the unified tray (used by the NotifyIcon + its badge variant).
         @{ src = 'assets\desktop-rtl.ico';          dst = 'desktop-rtl.ico';        req = $false },
+        @{ src = 'assets\herdr-rtl.ico';            dst = 'herdr-rtl.ico';          req = $false },
         # Legacy alias: a pre-rename tray (v1.x) applying a self-update looks for the old
         # launcher name in the fresh bin; ship it so the relaunch after bin-swap still works.
         @{ src = 'Desktop-RTL-Tray.vbs';            dst = 'Codex-RTL-Tray.vbs';     req = $false }

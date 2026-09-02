@@ -426,6 +426,26 @@ function New-HerdrRtlLauncher {
     return $path
 }
 
+# Copy the wordmark .ico next to the launcher and return its path, or $null when
+# it is not shipped (then the shortcut falls back to the exe's default glyph).
+function Install-HerdrRtlIcon {
+    $candidates = @(
+        (Join-Path $PSScriptRoot 'herdr-rtl.ico'),
+        (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'assets\herdr-rtl.ico')
+    )
+    $src = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $src) { return $null }
+    $dst = Join-Path $script:StateDir 'herdr-rtl.ico'
+    try {
+        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+        Copy-Item -LiteralPath $src -Destination $dst -Force
+        return $dst
+    } catch {
+        Write-RtlLog "could not place the herdr icon: $($_.Exception.Message)"
+        return $null
+    }
+}
+
 # Create the "Herdr (RTL)" shortcuts. Windows Terminal hosts the session when it is
 # available (correct Unicode and font handling); otherwise the .cmd runs in the
 # classic console, which still works.
@@ -443,12 +463,12 @@ function New-HerdrRtlShortcut {
     # rules between the shortcut and the program.
     $target = Join-Path $env:WINDIR 'System32\cmd.exe'
     $args = '/c "' + $cmd + '"'
-    # Icon: take it from the official install's exe, which is present and branded.
-    $iconExe = Join-Path $script:CopyRoot 'herdr.exe'
-    try {
-        $s = Resolve-HerdrSource -Profile $Profile
-        if ($s -and (Test-Path $s.ExePath)) { $iconExe = $s.ExePath }
-    } catch {}
+    # Icon: herdr.exe carries no icon resource at all (a Rust console binary), so a
+    # shortcut pointing at it shows the generic window glyph. Ship our own classic
+    # .ico of the herdr wordmark instead; it lives in the state dir, not the copy,
+    # so an update or uninstall of the copy never has to fight over it.
+    $icon = Install-HerdrRtlIcon
+    $iconExe = if ($icon) { $icon } else { Join-Path $script:CopyRoot 'herdr.exe' }
 
     $ws = New-Object -ComObject WScript.Shell
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {

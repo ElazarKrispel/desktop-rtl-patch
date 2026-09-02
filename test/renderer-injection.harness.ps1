@@ -294,6 +294,10 @@ try {
     # A shortcut window that starts inside the copy pins that folder for as long
     # as it is open, and then the copy can be neither replaced nor removed.
     Assert-True ($shellLink.WorkingDirectory -ne $herdr.CopyRoot -and -not $shellLink.WorkingDirectory.StartsWith($herdr.CopyRoot)) 'herdr shortcut never starts inside the copy'
+    # herdr.exe has no icon resource, so the shortcut must carry our wordmark .ico,
+    # placed in the state dir (never inside the copy).
+    Assert-True ($shellLink.IconLocation -match 'herdr-rtl\.ico') 'herdr shortcut uses the wordmark icon'
+    Assert-True (Test-Path (Join-Path $herdr.StateDir 'herdr-rtl.ico')) 'wordmark icon is placed in the state dir'
 
     # Settings write end to end.
     $written = Sync-HerdrRtlConfig -Source $fakeSrc -Profile $herdr
