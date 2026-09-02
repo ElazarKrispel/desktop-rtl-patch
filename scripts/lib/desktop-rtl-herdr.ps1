@@ -456,7 +456,11 @@ function New-HerdrRtlShortcut {
             $sc = $ws.CreateShortcut($lnk)
             $sc.TargetPath       = $target
             $sc.Arguments        = $args
-            $sc.WorkingDirectory = $script:CopyRoot
+            # Start in the user's home, never in the copy: cmd.exe keeps its
+            # working directory open for as long as the window lives (including
+            # the pause on a failed start), which would pin the copy folder and
+            # make an update or uninstall fail to replace it.
+            $sc.WorkingDirectory = $env:USERPROFILE
             $sc.IconLocation     = "$iconExe,0"
             $sc.Description      = $Profile.ShortcutDesc
             $sc.Save()

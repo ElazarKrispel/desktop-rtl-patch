@@ -280,6 +280,9 @@ try {
     Assert-True ($cmdText -match '(?m)^if not exist ') 'launcher checks the exe is there'
     Assert-True ($cmdText -match '(?m)^if errorlevel 1 \(') 'launcher reacts to a non-zero exit'
     Assert-True (([regex]::Matches($cmdText, '(?m)^\s*pause\s*$')).Count -eq 2) 'both launcher failure paths pause'
+    # A shortcut window that starts inside the copy pins that folder for as long
+    # as it is open, and then the copy can be neither replaced nor removed.
+    Assert-True ($shellLink.WorkingDirectory -ne $herdr.CopyRoot -and -not $shellLink.WorkingDirectory.StartsWith($herdr.CopyRoot)) 'herdr shortcut never starts inside the copy'
 
     # The shortcut must be launchable. Windows Terminal starts its command with
     # CreateProcess, which cannot execute a .cmd at all, so handing the launcher
