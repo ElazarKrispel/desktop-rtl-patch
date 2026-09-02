@@ -315,6 +315,9 @@ bidirectional algorithm of their own and print cells in the order they receive t
   they reach the program in the pane.
 * Hebrew is fully fixed. Arabic and Persian get the correct order but keep isolated letter forms,
   because the host terminals do not shape them either.
+* Claude Code already writes Hebrew in visual order itself, so panes where Herdr detects Claude
+  are left exactly as Claude paints them (`[terminal] bidi_skip_agents`, default `["claude"]`).
+  Codex, shells and everything else get the reordering.
 
 </details>
 
