@@ -528,7 +528,7 @@ function Get-RtlProfile {
                 UserDataDir       = $null          # no Electron cache to clear
                 RendererPayloads  = @()
                 PrebuiltRepo      = 'ElazarKrispel/herdr'
-                PrebuiltTag       = 'v0.8.2-rtl.1'
+                PrebuiltTag       = 'v0.8.2-rtl.2'
                 MainProcessSpec   = $null
                 ServicesToHalt    = @()
                 TakeOwnershipDirs = @()
