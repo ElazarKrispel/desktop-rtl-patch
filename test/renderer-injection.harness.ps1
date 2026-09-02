@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('rtl-renderer-tests-' + [guid]::NewGuid().ToString('N'))
 $oldLocal = $env:LOCALAPPDATA; $oldRoam = $env:APPDATA
@@ -280,9 +280,6 @@ try {
     Assert-True ($cmdText -match '(?m)^if not exist ') 'launcher checks the exe is there'
     Assert-True ($cmdText -match '(?m)^if errorlevel 1 \(') 'launcher reacts to a non-zero exit'
     Assert-True (([regex]::Matches($cmdText, '(?m)^\s*pause\s*$')).Count -eq 2) 'both launcher failure paths pause'
-    # A shortcut window that starts inside the copy pins that folder for as long
-    # as it is open, and then the copy can be neither replaced nor removed.
-    Assert-True ($shellLink.WorkingDirectory -ne $herdr.CopyRoot -and -not $shellLink.WorkingDirectory.StartsWith($herdr.CopyRoot)) 'herdr shortcut never starts inside the copy'
 
     # The shortcut must be launchable. Windows Terminal starts its command with
     # CreateProcess, which cannot execute a .cmd at all, so handing the launcher
@@ -294,6 +291,9 @@ try {
     Assert-True ($shellLink.Arguments -match '(?i)^/c "') 'herdr shortcut passes /c to the shell'
     Assert-True ($shellLink.Arguments -match [regex]::Escape('Herdr-RTL.cmd')) 'herdr shortcut points at the launcher'
     Assert-True (-not ($shellLink.TargetPath -like '*wt.exe')) 'herdr shortcut never hands a .cmd to Windows Terminal'
+    # A shortcut window that starts inside the copy pins that folder for as long
+    # as it is open, and then the copy can be neither replaced nor removed.
+    Assert-True ($shellLink.WorkingDirectory -ne $herdr.CopyRoot -and -not $shellLink.WorkingDirectory.StartsWith($herdr.CopyRoot)) 'herdr shortcut never starts inside the copy'
 
     # Settings write end to end.
     $written = Sync-HerdrRtlConfig -Source $fakeSrc -Profile $herdr
