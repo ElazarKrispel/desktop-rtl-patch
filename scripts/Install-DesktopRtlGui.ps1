@@ -384,11 +384,13 @@ function Start-Install {
 # --- Background uninstall ----------------------------------------------------
 function Start-Uninstall {
     $appName = $script:ActiveProfile.DisplayName
-    if (-not (Confirm-CloseRtlCopy)) { return }
     $r = [System.Windows.Forms.MessageBox]::Show(
         "להסיר את $appName (RTL)? יוסרו העותק, הקיצורים, רישומי המערכת והעדכון האוטומטי. ה-$appName המקורי לא ייפגע. נתוני ההתחברות והמטמון (המשותפים עם $appName המקורי) וקובצי הלוג יישמרו.",
         'Desktop RTL', 'YesNo', 'Question')
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    # Only after the user confirms the uninstall do we offer to close a running copy - so
+    # rejecting the uninstall never leaves the copy stopped for nothing.
+    if (-not (Confirm-CloseRtlCopy)) { return }
     $script:Sync.Done = $false; $script:Sync.Ok = $false; $script:Sync.Err = $null
     $script:Sync.StepKey = ''; $script:Sync.StepPct = 0; $script:Sync.StepMarquee = $false
     $script:Sync.Op = 'uninstall'; $script:Sync.Busy = $true

@@ -103,8 +103,11 @@ function Get-HerdrExeVersion {
         $psi.RedirectStandardError = $true
         $psi.CreateNoWindow = $true
         $proc = [System.Diagnostics.Process]::Start($psi)
-        $out = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
+        # Read both redirected streams asynchronously BEFORE WaitForExit: reading one to the
+        # end while the child fills the other pipe's buffer would deadlock and defeat the timeout.
+        $so = $proc.StandardOutput.ReadToEndAsync(); $se = $proc.StandardError.ReadToEndAsync()
         if (-not $proc.WaitForExit(20000)) { try { $proc.Kill() } catch {} ; return $null }
+        $out = $so.Result + $se.Result
         $m = [regex]::Match($out, '(\d+\.\d+\.\d+)')
         if ($m.Success) { return $m.Groups[1].Value }
     } catch {}
@@ -155,17 +158,34 @@ function Resolve-HerdrRtlArtifact {
     $tag = Get-HerdrRtlBuildTag -Profile $Profile
     if (-not $tag) { throw '[ARTIFACT] No RTL build tag is configured for Herdr.' }
     $url = "https://github.com/$($Profile.PrebuiltRepo)/releases/download/$tag/$script:HerdrRtlAssetName"
+    $sumsUrl = "https://github.com/$($Profile.PrebuiltRepo)/releases/download/$tag/SHA256SUMS.txt"
     $zip = Join-Path $WorkDir $script:HerdrRtlAssetName
     Write-RtlLog "Downloading RTL build $tag from $url"
+    $sumsRaw = $null
     try {
         $old = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -MaximumRedirection 5
+            $sumsRaw = (Invoke-WebRequest -Uri $sumsUrl -UseBasicParsing -MaximumRedirection 5).Content
         } finally { $ProgressPreference = $old }
     }
     catch { throw "[ARTIFACT] Could not download the Herdr RTL build ($url): $($_.Exception.Message)" }
+    # Integrity check BEFORE extraction (CWE-494), mirroring the tool self-update: verify the
+    # archive against the release's published SHA256SUMS.txt and refuse an unverifiable or
+    # mismatched download. The hash covers the payload regardless of the transport/redirect
+    # chain. This throws [ARTIFACT] (a latching code), so a one-off corrupt download self-heals
+    # via the consecutive-failure threshold while a persistent mismatch or a release with no
+    # checksum stays blocked instead of installing unverified code. The local HERDR_RTL_ARTIFACT
+    # path (maintainer's own build) returned above and is intentionally not checksum-gated.
+    $sums = if ($sumsRaw -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($sumsRaw) } else { [string]$sumsRaw }
+    if (-not $sums) { throw "[ARTIFACT] the $tag release has no SHA256SUMS.txt; refusing an unverified Herdr RTL download." }
+    $have = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+    if ($sums.ToLower() -notmatch [regex]::Escape($have)) {
+        throw '[ARTIFACT] the downloaded Herdr RTL build did not match the published SHA-256 checksum.'
+    }
+    Write-RtlLog 'Verified the RTL build against the published SHA-256 checksum.'
     $dest = Join-Path $WorkDir 'artifact'
     Expand-HerdrArchive -Archive $zip -Destination $dest
     return (Find-HerdrExeRoot -Root $dest)
@@ -230,8 +250,7 @@ function Invoke-HerdrRtlBuild {
 function Test-HerdrRtlBuild {
     param(
         [Parameter(Mandatory)][string]$Root,
-        $Source,
-        [switch]$AllowVersionSkew
+        $Source
     )
     $exe = Join-Path $Root 'herdr.exe'
     if (-not (Test-Path $exe)) { throw "[ARTIFACT] Herdr RTL binary missing: $exe" }
@@ -245,14 +264,20 @@ function Test-HerdrRtlBuild {
         $psi.RedirectStandardError = $true
         $psi.CreateNoWindow = $true
         $proc = [System.Diagnostics.Process]::Start($psi)
-        $out = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
+        # Async reads before WaitForExit - see Get-HerdrExeVersion: a synchronous ReadToEnd on
+        # one stream can deadlock against the other pipe's buffer and never hit the timeout.
+        $so = $proc.StandardOutput.ReadToEndAsync(); $se = $proc.StandardError.ReadToEndAsync()
         if (-not $proc.WaitForExit(30000)) { try { $proc.Kill() } catch {} ; throw 'timed out' }
+        $out = $so.Result + $se.Result
     }
     catch { throw "[ARTIFACT] The Herdr RTL binary did not run: $($_.Exception.Message)" }
     $m = [regex]::Match($out, '(\d+\.\d+\.\d+)')
     if (-not $m.Success) { throw "[ARTIFACT] Could not read a version from the Herdr RTL binary (output: $($out.Trim()))" }
     $built = $m.Groups[1].Value
-    if ($Source -and $Source.Version -and -not $AllowVersionSkew -and $built -ne $Source.Version) {
+    # Version skew is REPORTED, not blocked, by design: a fork RTL build that lags an upstream
+    # bump is still the best available RTL build, and refusing it would leave the user with no
+    # RTL at all. Log the skew so it is visible; installation proceeds regardless.
+    if ($Source -and $Source.Version -and $built -ne $Source.Version) {
         Write-RtlLog "NOTE: RTL build is Herdr $built while the official install is $($Source.Version)."
     }
     return [pscustomobject]@{ Version = $built; Output = $out.Trim() }
@@ -395,6 +420,7 @@ function New-HerdrRtlLauncher {
     foreach ($d in @($data, $state)) { if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null } }
 
     $lines = @(
+        '@chcp 65001 >nul',
         '@echo off',
         'rem Herdr (RTL) launcher - generated by the Desktop RTL patch. Do not edit:',
         'rem it is rewritten from the app profile on every install and update.',
@@ -421,7 +447,10 @@ function New-HerdrRtlLauncher {
         ')'
     )
     $path = Join-Path $script:StateDir 'Herdr-RTL.cmd'
-    [IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.ASCIIEncoding))
+    # UTF-8 WITHOUT a BOM (a BOM is parsed as literal command text by cmd.exe), paired with the
+    # chcp 65001 first line, so a non-ASCII profile path in the XDG vars survives intact instead
+    # of being replaced with '?' by ASCIIEncoding.
+    [IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding $false))
     Write-RtlLog "Wrote launcher $path"
     return $path
 }
@@ -523,7 +552,9 @@ function Invoke-HerdrRtlInstall {
         # Re-assert the shortcuts. A shortcut can go missing without the install
         # changing at all (a cleanup tool, a profile sync, a stray delete), and
         # without this the only way back is a forced reinstall.
-        if (@($script:ShortcutPaths | Where-Object { -not (Test-Path $_) })) {
+        # Only the shortcuts New-HerdrRtlShortcut creates - NOT $script:ShortcutPaths, which
+        # also holds legacy paths that are always "missing" and would rewrite them every pass.
+        if (@(@($script:ShortcutStart, $script:ShortcutDesktop) | Where-Object { -not (Test-Path $_) })) {
             Write-RtlLog 'A shortcut is missing; recreating it.'
             try { New-HerdrRtlShortcut -Profile $Profile }
             catch { Write-RtlLog "shortcut refresh failed: $($_.Exception.Message)" }
@@ -533,18 +564,23 @@ function Invoke-HerdrRtlInstall {
     }
     Write-RtlLog "Install needed: $app v$($Source.Version) [$($Source.Type)] (was '$current')"
 
+    # Defer BEFORE building. Unlike the Electron path (which pre-stages a copy), Herdr's build
+    # downloads + extracts the release archive every time, and nothing records that the staged
+    # build already matches this signature - so building-then-deferring would re-download the
+    # archive every 90s poll for as long as the copy stays open. A running copy cannot be
+    # swapped anyway, so defer without touching the network.
+    if (Test-CodexRtlRunning) {
+        Write-RtlLog "$app (RTL) is running; deferring the update until it closes."
+        if ($Auto) { Show-RtlToast "$app update ready" "A newer $app (RTL) will install next time you close it." }
+        Set-RtlStep 'deferred' 100
+        return
+    }
+
     Set-RtlStep 'copy' 25 $true
     Invoke-HerdrRtlBuild -Source $Source -Profile $Profile
     Set-RtlStep 'verify' 70 $true
     $staged = Test-HerdrRtlBuild -Root $script:Staging -Source $Source
     Write-RtlLog "Staged Herdr RTL build $($staged.Version)."
-
-    if (Test-CodexRtlRunning) {
-        Write-RtlLog "$app (RTL) is running; deferring swap (staging kept for next close)."
-        if ($Auto) { Show-RtlToast "$app update ready" "A newer $app (RTL) is staged. It will apply next time you close it." }
-        Set-RtlStep 'deferred' 100
-        return
-    }
 
     Set-RtlStep 'swap' 88
     Write-RtlLog 'Swapping staging into place (atomic)...'

@@ -1927,6 +1927,9 @@ function Invoke-CodexRtlUpdate {
             $blk = Test-RtlUpdateBlocked -Signature $src.Signature
             if ($blk -and -not $Force) {
                 Write-RtlLog "Update blocked for this build ($($blk.error)); skipping the auto retry. Use 'update now' to retry."
+                # -Auto (tray/watcher) returns quietly; a manual non-Force run must SURFACE the
+                # block (rethrow the recorded coded error) so the CLI does not print a stale [OK].
+                if (-not $Auto) { throw ([string]$blk.error) }
                 return
             }
             if ($Force -or -not (Get-RtlBlockRecord -Signature $src.Signature)) { Clear-RtlBlocked }
@@ -1960,7 +1963,10 @@ function Invoke-CodexRtlUpdate {
             # Re-assert the shortcuts. They are only created on a real update, so a
             # shortcut that disappears for any other reason (a cleanup tool, a profile
             # sync, a stray delete) would otherwise need a forced reinstall to return.
-            if (@($script:ShortcutPaths | Where-Object { -not (Test-Path $_) })) {
+            # Only the shortcuts New-RtlShortcut actually creates - NOT $script:ShortcutPaths,
+            # which also carries the legacy paths that New-RtlShortcut deletes (so a legacy
+            # entry is always "missing" and would rewrite the .lnk + re-stamp the AUMID every pass).
+            if (@(@($script:ShortcutStart, $script:ShortcutDesktop) | Where-Object { -not (Test-Path $_) })) {
                 Write-RtlLog 'A shortcut is missing; recreating it.'
                 try { New-RtlShortcut } catch { Write-RtlLog "shortcut refresh failed: $($_.Exception.Message)" }
             }
@@ -2621,7 +2627,9 @@ function Stop-RtlOwnedProcesses {
                     if ($alive.Count -eq 0) { break }
                     Start-Sleep -Milliseconds 200
                 }
-            } finally { if ($ev) { try { $ev.Dispose() } catch {} } }
+            }
+            catch { Write-RtlAgentLog "could not signal the tray quit event; falling back to a force stop: $($_.Exception.Message)" }
+            finally { if ($ev) { try { $ev.Dispose() } catch {} } }
         }
         foreach ($v in $victims) {
             if (-not (Get-Process -Id $v.ProcessId -ErrorAction SilentlyContinue)) { Write-RtlAgentLog "PID $($v.ProcessId) exited gracefully."; continue }
