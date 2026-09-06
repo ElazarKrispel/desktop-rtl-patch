@@ -1837,6 +1837,22 @@ function Set-RtlBlocked {
 function Clear-RtlBlocked {
     if (Test-Path $script:BlockedFile) { try { Remove-Item -LiteralPath $script:BlockedFile -Force; Write-RtlLog 'Cleared stale/forced update block.' } catch {} }
 }
+# The SINGLE source of truth for which Invoke-CodexRtlUpdate failures latch an auto-retry
+# block (after $script:BlockThreshold consecutive occurrences). Latch only DETERMINISTIC
+# structural failures that recur until the source or the tool changes, so retrying them every
+# 90s just churns disk/network:
+#   FUSE (asar-integrity), LAYOUT / UNSUPPORTED (source structure), NODE (bundled runtime),
+#   ASAR / VERIFY (inject + verify), ARTIFACT (Herdr release/build resolution).
+# Deliberately EXCLUDED so they self-heal on the next pass: LOCK / DISK / STAGING (transient
+# I/O), AV (antivirus / Controlled Folder Access). INTEGRITY / PACKAGE are thrown only by the
+# tool self-update path (Invoke-RtlSelfUpdate), outside this try; PROFILE leaves $src null (so
+# there is nothing to key a block on); SAFETY is a copy-only bug guard we want to keep surfacing.
+# Every deterministic code here is safe to latch even if it can also fire transiently, because
+# the consecutive-failure threshold means one isolated occurrence never blocks.
+function Test-RtlShouldLatchError {
+    param([string]$Message)
+    return ($Message -match '^\[(FUSE|LAYOUT|UNSUPPORTED|NODE|ASAR|VERIFY|ARTIFACT)\]')
+}
 
 function Get-CodexRtlStatus {
     $src = $null; try { $src = Resolve-RtlSource } catch {}
@@ -2103,15 +2119,13 @@ function Invoke-CodexRtlUpdate {
     catch [System.UnauthorizedAccessException] { throw "[AV] Access was denied, possibly blocked by antivirus or Controlled Folder Access. $($_.Exception.Message)" }
     catch [System.Security.SecurityException]   { throw "[AV] A security restriction blocked the operation, possibly antivirus. $($_.Exception.Message)" }
     catch {
-        # Persist a block for structural failures so the auto retry storm stops (see the
-        # guard above). These are the deterministic codes: a source read/layout problem
-        # ([LAYOUT]/[NODE]/[UNSUPPORTED]), the fuse ([FUSE]), and - the most likely future
-        # breakage - a renderer bundle move that fails injection ([ASAR]) or its verify
-        # ([VERIFY]). Recording needs the consecutive-failure threshold, so a one-off
-        # transient still self-heals. Everything else just propagates. $src may be $null if
-        # resolve failed first - then there is nothing to key on.
+        # Persist a block for deterministic structural failures so the auto retry storm stops
+        # (see the guard above). Test-RtlShouldLatchError is the single source of truth for which
+        # codes latch (and documents which are excluded as transient); the consecutive-failure
+        # threshold means a one-off still self-heals. Everything else just propagates. $src may be
+        # $null if resolve failed first - then there is nothing to key on.
         $m = [string]$_.Exception.Message
-        if ($src -and $m -match '^\[(FUSE|LAYOUT|UNSUPPORTED|NODE|ASAR|VERIFY)\]') { Set-RtlBlocked -Signature $src.Signature -ErrorMessage $m }
+        if ($src -and (Test-RtlShouldLatchError $m)) { Set-RtlBlocked -Signature $src.Signature -ErrorMessage $m }
         throw
     }
     finally {

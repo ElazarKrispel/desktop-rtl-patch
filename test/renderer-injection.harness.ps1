@@ -208,6 +208,18 @@ try {
     Clear-RtlBlocked
     Assert-True (-not (Test-Path $script:BlockedFile)) 'Clear-RtlBlocked removes the file'
 
+    # The latch set is single-sourced in Test-RtlShouldLatchError. EVERY deterministic code that
+    # can reach Invoke-CodexRtlUpdate's catch must latch (or a future layout/release change storms
+    # uncapped, as [ASAR]/[VERIFY]/[ARTIFACT] each did before they were added); EVERY transient or
+    # out-of-scope code must NOT (or one blip disables auto-updates).
+    foreach ($code in @('FUSE', 'LAYOUT', 'UNSUPPORTED', 'NODE', 'ASAR', 'VERIFY', 'ARTIFACT')) {
+        Assert-True (Test-RtlShouldLatchError "[$code] something deterministic") "latch set includes deterministic [$code]"
+    }
+    foreach ($code in @('LOCK', 'DISK', 'AV', 'STAGING', 'INTEGRITY', 'PACKAGE', 'SAFETY', 'PROFILE', 'NOCODEX')) {
+        Assert-True (-not (Test-RtlShouldLatchError "[$code] something transient or out of scope")) "latch set excludes [$code]"
+    }
+    Assert-True (-not (Test-RtlShouldLatchError 'a bare uncoded error')) 'an uncoded error never latches'
+
     # SourceMissing beats a stale block, and status never mutates state (read-only).
     Set-RtlActiveApp grokbot | Out-Null
     New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $grok.CopyRoot $grok.ExeRelPath) -Parent) | Out-Null
