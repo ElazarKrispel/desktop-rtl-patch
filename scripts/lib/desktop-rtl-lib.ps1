@@ -26,6 +26,11 @@ if (Test-Path $script:_herdrPath) { . $script:_herdrPath }
 
 $script:PatchVersion  = '2.4.0'
 $script:SchemaVersion = 2
+# A structural update failure latches an auto-retry block only after this many CONSECUTIVE
+# failures for the same source signature + tool version. One failure never latches, so a
+# transient read/lock error self-heals on the next pass; a deterministic failure reaches the
+# threshold within a couple of ticks and stops the ~2GB re-copy storm.
+$script:BlockThreshold = 2
 
 # --- Agent-scoped globals (v2.1.0 unified tray agent) ------------------------
 # The unified background agent (one tray for ALL apps) lives in its OWN neutral home,
@@ -1793,7 +1798,10 @@ function Export-CodexRtlDiagnostics {
 # version (a newer tool that may handle this build) is stale and is IGNORED here. This
 # function never deletes the file; the stale file is cleared only inside Invoke-CodexRtlUpdate
 # (an action path), so a status call in every poll/reconcile stays free of side effects.
-function Test-RtlUpdateBlocked {
+# Raw same-build block record: the parsed blocked.json when it matches BOTH the source
+# signature and the current tool version (any failure count), else $null. The signature +
+# version binding means a newer app build or a newer tool is never suppressed by an old block.
+function Get-RtlBlockRecord {
     param([string]$Signature)
     if (-not $Signature) { return $null }
     if (-not (Test-Path $script:BlockedFile)) { return $null }
@@ -1802,15 +1810,29 @@ function Test-RtlUpdateBlocked {
     if ($b.signature -eq $Signature -and $b.patchVersion -eq $script:PatchVersion) { return $b }
     return $null
 }
+# Actively-blocking predicate (used by BOTH the -Auto guard and Get-CodexRtlStatus, so a
+# "Blocked" status always means the auto retry is actually suppressed): a same-build record
+# that has reached the consecutive-failure threshold. A single failure never latches.
+function Test-RtlUpdateBlocked {
+    param([string]$Signature)
+    $rec = Get-RtlBlockRecord -Signature $Signature
+    if ($rec -and [int]$rec.count -ge $script:BlockThreshold) { return $rec }
+    return $null
+}
 
-# Record / clear a structural-failure block (action paths only). The block binds BOTH the
-# source signature and the current tool version, so a newer tool that may handle the same
-# Codex build is never permanently suppressed (Test-RtlUpdateBlocked treats it as stale).
+# Record a structural-failure block (action paths only). The block binds BOTH the source
+# signature and the current tool version, so a newer tool that may handle the same Codex
+# build is never permanently suppressed (Get-RtlBlockRecord treats it as stale). Each call
+# bumps a CONSECUTIVE-failure count for the same build; Test-RtlUpdateBlocked only suppresses
+# once the count reaches $script:BlockThreshold and any success clears it, so only a
+# deterministic (repeating) failure latches - a one-off transient error does not.
 function Set-RtlBlocked {
     param([string]$Signature, [string]$ErrorMessage)
     if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
-    $o = [ordered]@{ signature = $Signature; patchVersion = $script:PatchVersion; error = $ErrorMessage; at = (Get-Date).ToString('o') }
-    try { [System.IO.File]::WriteAllText($script:BlockedFile, (([pscustomobject]$o) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false)); Write-RtlLog "Recorded update block for signature '$Signature': $ErrorMessage" } catch {}
+    $prev  = Get-RtlBlockRecord -Signature $Signature
+    $count = if ($prev -and $prev.count) { [int]$prev.count + 1 } else { 1 }
+    $o = [ordered]@{ signature = $Signature; patchVersion = $script:PatchVersion; error = $ErrorMessage; at = (Get-Date).ToString('o'); count = $count }
+    try { [System.IO.File]::WriteAllText($script:BlockedFile, (([pscustomobject]$o) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false)); Write-RtlLog "Recorded update failure ($count/$($script:BlockThreshold)) for signature '$Signature': $ErrorMessage" } catch {}
 }
 function Clear-RtlBlocked {
     if (Test-Path $script:BlockedFile) { try { Remove-Item -LiteralPath $script:BlockedFile -Force; Write-RtlLog 'Cleared stale/forced update block.' } catch {} }
@@ -1879,17 +1901,19 @@ function Invoke-CodexRtlUpdate {
             return
         }
         # Retry-storm guard - BEFORE Test-CodexSource and any staging / copy I/O. If a prior
-        # pass recorded a structural failure ([FUSE]/[LAYOUT]/[UNSUPPORTED]/[NODE]) for THIS
-        # exact source signature and tool version, an -Auto pass returns immediately instead
-        # of re-copying ~2GB every 90 seconds. -Force (tray "update now" / the wizard) always
-        # retries. A stale block (the app updated, or a newer tool) is cleared and retried.
+        # pass recorded enough CONSECUTIVE structural failures ([FUSE]/[LAYOUT]/[UNSUPPORTED]/
+        # [NODE]/[ASAR]/[VERIFY]) for THIS exact source signature and tool version, an -Auto
+        # pass returns immediately instead of re-copying ~2GB every 90 seconds. -Force (tray
+        # "update now" / the wizard) always retries. A stale block (the app updated, or a newer
+        # tool) is cleared; a same-build failure streak still below the threshold is KEPT so it
+        # can accumulate (and a single transient failure self-heals on the next pass).
         if (Test-Path $script:BlockedFile) {
             $blk = Test-RtlUpdateBlocked -Signature $src.Signature
             if ($blk -and -not $Force) {
                 Write-RtlLog "Update blocked for this build ($($blk.error)); skipping the auto retry. Use 'update now' to retry."
                 return
             }
-            Clear-RtlBlocked   # stale block, or an explicit forced retry
+            if ($Force -or -not (Get-RtlBlockRecord -Signature $src.Signature)) { Clear-RtlBlocked }
         }
         Test-CodexSource -Source $src | Out-Null   # throws [LAYOUT]/[NODE] on structural problems
 
@@ -1898,6 +1922,7 @@ function Invoke-CodexRtlUpdate {
             # there is nothing to copy from the user's install and nothing to inject.
             # Everything below this point assumes an Electron tree; see desktop-rtl-herdr.ps1.
             Invoke-HerdrRtlInstall -Source $src -Force:$Force -Auto:$Auto -Profile $p
+            Clear-RtlBlocked   # herdr install succeeded (no throw) - reset any failure streak
             return
         }
 
@@ -1912,6 +1937,7 @@ function Invoke-CodexRtlUpdate {
         $patchCurrent = ($state -and $state.patchVersion -eq $script:PatchVersion)
         if (-not $Force -and $current -eq $src.Signature -and (Test-Path $copyExe) -and $patchCurrent) {
             Write-RtlLog "Up to date ($app v$($src.Version), patch $($script:PatchVersion))."
+            Clear-RtlBlocked   # a clean up-to-date pass resets any consecutive-failure streak
             # Apply any settings change made while the RTL copy was open (now that a
             # pass is running and it may be closed).
             try { Sync-RtlConfigAsset -AppId $p.Id -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null } catch { Write-RtlLog "config sync error: $($_.Exception.Message)" }
@@ -2040,6 +2066,7 @@ function Invoke-CodexRtlUpdate {
         if (Test-CodexRtlRunning) {
             Write-RtlLog "$app (RTL) is running; deferring swap (staging kept for next close)."
             if ($Auto) { Show-RtlToast "$app update ready" "A newer $app is staged. It will apply next time you close $app." }
+            Clear-RtlBlocked   # staging built + verified OK; the structural failure (if any) is resolved
             Set-RtlStep 'deferred' 100
             return
         }
@@ -2068,6 +2095,7 @@ function Invoke-CodexRtlUpdate {
         }
         Write-RtlState @{ sourceSignature = $src.Signature; codexVersion = $src.Version; sourcePath = $src.AppDir; payloadSha256 = $verify.payloadSha256; asarSha256 = $verify.asarSha256 }
         Set-RtlConfigApplied   # the fresh build baked the current config.json
+        Clear-RtlBlocked   # full success (built, swapped, verified) resets any failure streak
         Write-RtlLog "DONE: $app (RTL) now at v$($src.Version)."
         Set-RtlStep 'done' 100
         if ($Auto) { Show-RtlToast "$app RTL updated" "Patched for $app v$($src.Version)." }
@@ -2076,10 +2104,14 @@ function Invoke-CodexRtlUpdate {
     catch [System.Security.SecurityException]   { throw "[AV] A security restriction blocked the operation, possibly antivirus. $($_.Exception.Message)" }
     catch {
         # Persist a block for structural failures so the auto retry storm stops (see the
-        # guard above). Only the coded structural errors are recorded; everything else just
-        # propagates. $src may be $null if resolve failed first - then there is nothing to key on.
+        # guard above). These are the deterministic codes: a source read/layout problem
+        # ([LAYOUT]/[NODE]/[UNSUPPORTED]), the fuse ([FUSE]), and - the most likely future
+        # breakage - a renderer bundle move that fails injection ([ASAR]) or its verify
+        # ([VERIFY]). Recording needs the consecutive-failure threshold, so a one-off
+        # transient still self-heals. Everything else just propagates. $src may be $null if
+        # resolve failed first - then there is nothing to key on.
         $m = [string]$_.Exception.Message
-        if ($src -and $m -match '^\[(FUSE|LAYOUT|UNSUPPORTED|NODE)\]') { Set-RtlBlocked -Signature $src.Signature -ErrorMessage $m }
+        if ($src -and $m -match '^\[(FUSE|LAYOUT|UNSUPPORTED|NODE|ASAR|VERIFY)\]') { Set-RtlBlocked -Signature $src.Signature -ErrorMessage $m }
         throw
     }
     finally {

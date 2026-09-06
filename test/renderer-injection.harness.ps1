@@ -190,16 +190,21 @@ try {
     Assert-True ($res2.Certain) 'uninstall after the lock is released reports Certain=$true'
     Assert-True (-not (Test-Path $grok.CopyRoot)) 'the copy root is gone after the clean uninstall'
 
-    # ---- blocked.json: retry-storm guard, tool-version awareness, read-only status ----
+    # ---- blocked.json: consecutive-failure latch, tool-version awareness, read-only status ----
     Set-RtlActiveApp grokbot | Out-Null
     New-Item -ItemType Directory -Force -Path $grok.StateDir | Out-Null
     Set-RtlBlocked -Signature 'sigA' -ErrorMessage '[FUSE] test'
-    Assert-True ($null -ne (Test-RtlUpdateBlocked -Signature 'sigA')) 'block is honoured for the same signature + tool version'
+    Assert-True ($null -eq (Test-RtlUpdateBlocked -Signature 'sigA')) 'one structural failure does NOT latch a block (transient tolerance)'
+    Assert-True ((Get-RtlBlockRecord -Signature 'sigA').count -eq 1) 'the first failure is recorded (count 1) so a streak can accumulate'
+    Set-RtlBlocked -Signature 'sigA' -ErrorMessage '[FUSE] test'
+    Assert-True ((Get-RtlBlockRecord -Signature 'sigA').count -eq 2) 'a second consecutive same-build failure increments the count'
+    Assert-True ($null -ne (Test-RtlUpdateBlocked -Signature 'sigA')) 'block latches once it reaches the consecutive threshold'
     Assert-True ($null -eq (Test-RtlUpdateBlocked -Signature 'sigB')) 'block is ignored for a different source signature (app updated)'
     # A block written by a different (older) tool version must be treated as stale.
-    $stale = [ordered]@{ signature = 'sigA'; patchVersion = '0.0.0-old'; error = '[FUSE] old'; at = (Get-Date).ToString('o') }
+    $stale = [ordered]@{ signature = 'sigA'; patchVersion = '0.0.0-old'; error = '[FUSE] old'; at = (Get-Date).ToString('o'); count = 9 }
     [IO.File]::WriteAllText($script:BlockedFile, (([pscustomobject]$stale) | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
     Assert-True ($null -eq (Test-RtlUpdateBlocked -Signature 'sigA')) 'block from a different tool version is stale (a newer tool may handle it)'
+    Assert-True ($null -eq (Get-RtlBlockRecord -Signature 'sigA')) 'a different-tool-version record is not a same-build record'
     Clear-RtlBlocked
     Assert-True (-not (Test-Path $script:BlockedFile)) 'Clear-RtlBlocked removes the file'
 
@@ -212,6 +217,31 @@ try {
     Assert-True ($st.State -eq 'SourceMissing') 'copy present + source gone => SourceMissing (beats a stale block)'
     Assert-True (Test-Path $script:BlockedFile) 'Get-CodexRtlStatus does NOT delete blocked.json (read-only)'
     Remove-Item $script:BlockedFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $grok.CopyRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+    # ---- Get-CodexRtlStatus returns the real 'Blocked' state (resolvable source + valid state
+    #      + latched block) and stays read-only there - the path the SourceMissing case never reaches.
+    Set-RtlActiveApp grokbot | Out-Null
+    $grokSrc = $grok.SourceRoots[0]
+    New-Item -ItemType Directory -Force -Path (Join-Path $grokSrc 'resources') | Out-Null
+    [IO.File]::WriteAllText((Join-Path $grokSrc 'resources\app.asar'), 'fake-asar')   # resolvable source (asar + exe)
+    [IO.File]::WriteAllText((Join-Path $grokSrc $grok.ExeLeaf), 'exe')
+    $bsrc = Resolve-RtlSource
+    Assert-True ($null -ne $bsrc) 'grokbot source resolves from a faked install tree'
+    New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $grok.CopyRoot $grok.ExeRelPath) -Parent) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $grok.CopyRoot $grok.ExeRelPath), 'exe')   # copy present
+    $stateObj = [ordered]@{ schemaVersion = $script:SchemaVersion; sourceSignature = $bsrc.Signature; codexVersion = $bsrc.Version; patchVersion = $script:PatchVersion }
+    [IO.File]::WriteAllText($script:StateFile, (([pscustomobject]$stateObj) | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+    Set-RtlBlocked -Signature $bsrc.Signature -ErrorMessage '[VERIFY] injected payload missing'
+    Set-RtlBlocked -Signature $bsrc.Signature -ErrorMessage '[VERIFY] injected payload missing'   # reach the threshold
+    $stB = Get-CodexRtlStatus
+    Assert-True ($stB.State -eq 'Blocked') 'resolvable source + valid state + latched block => Blocked'
+    Assert-True ($stB.BlockedError -match 'VERIFY') 'Blocked status surfaces the recorded error'
+    Assert-True (Test-Path $script:BlockedFile) 'status does NOT delete blocked.json on the Blocked path (read-only)'
+    Assert-True ($null -ne (Get-RtlBlockRecord -Signature $bsrc.Signature)) 'blocked.json still a valid same-build record after a status read'
+    Remove-Item $script:BlockedFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $script:StateFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $grokSrc -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $grok.CopyRoot -Recurse -Force -ErrorAction SilentlyContinue
 
     # ---- enumeration / logging must not create state folders -----------------
@@ -258,9 +288,15 @@ try {
     }
 
     # ---- tray quit event: signal, dispose, reopen must be un-signaled --------
-    $ev = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\DesktopRtlTrayQuit')
+    # Use a UNIQUE per-run name, NEVER the production 'Local\DesktopRtlTrayQuit'. That event
+    # is session-global, so on a machine with a live tray this test would (a) Set() it and quit
+    # the real tray, and (b) never destroy the object on Dispose (the tray still holds a handle),
+    # breaking the isolation check. A unique name verifies the same create/Set/Dispose/reopen
+    # semantics without touching a running tray.
+    $quitName = "Local\DesktopRtlTrayQuitTest_$([guid]::NewGuid().ToString('N'))"
+    $ev = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $quitName)
     [void]$ev.Set(); $ev.Dispose()
-    $ev2 = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\DesktopRtlTrayQuit')
+    $ev2 = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $quitName)
     try { Assert-True (-not $ev2.WaitOne(0)) 'a fresh quit-event handle is not signaled after the prior one was disposed' } finally { $ev2.Dispose() }
 
     New-Item -ItemType Directory -Force -Path (Join-Path $temp 'empty-artifact') | Out-Null
