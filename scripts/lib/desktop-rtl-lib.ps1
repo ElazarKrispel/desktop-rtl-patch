@@ -24,7 +24,7 @@ if (Test-Path $script:_errPath) { . $script:_errPath }
 $script:_herdrPath = Join-Path $PSScriptRoot 'desktop-rtl-herdr.ps1'
 if (Test-Path $script:_herdrPath) { . $script:_herdrPath }
 
-$script:PatchVersion  = '2.4.0'
+$script:PatchVersion  = '2.5.0'
 $script:SchemaVersion = 2
 # A structural update failure latches an auto-retry block only after this many CONSECUTIVE
 # failures for the same source signature + tool version. One failure never latches, so a

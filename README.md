@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.4.0/desktop-rtl-patch-2.4.0.zip"><img src="https://img.shields.io/badge/Download-v2.4.0-7c5cff?style=for-the-badge" alt="Download Desktop RTL Patch v2.4.0"></a>
+  <a href="https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.5.0/desktop-rtl-patch-2.5.0.zip"><img src="https://img.shields.io/badge/Download-v2.5.0-7c5cff?style=for-the-badge" alt="Download Desktop RTL Patch v2.5.0"></a>
 </p>
 
 <p align="center">
@@ -59,7 +59,7 @@ them as you like. Names are used only to say what this patches; see the
 
 ## Install
 
-1. **[Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.4.0/desktop-rtl-patch-2.4.0.zip)**
+1. **[Download the ZIP](https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.5.0/desktop-rtl-patch-2.5.0.zip)**
    and extract it (right-click the file, "Extract All").
 2. Double-click **`Install-Desktop-RTL.vbs`**. A small window opens.
 3. Pick your app at the top, click **התקן** (Install), and wait about a minute.
@@ -78,7 +78,7 @@ supported app already installed. The installer window is in Hebrew.
 
 1. ודאו שהאפליקציה שרוצים לתקן מותקנת: **Codex** מה-Microsoft Store (בגרסאות החדשות היא כבר
    נקראת **ChatGPT**), **Grok Bot**, **OpenCode**, **Traycer** או **T3 Code**.
-2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.4.0/desktop-rtl-patch-2.4.0.zip)**,
+2. **[⬇️ לחצו כאן להורדת הקובץ (ZIP)](https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.5.0/desktop-rtl-patch-2.5.0.zip)**,
    ומחלצים אותו (לחיצה ימנית על הקובץ ← "Extract All").
 3. דאבל-קליק על **`Install-Desktop-RTL.vbs`**. נפתח חלון התקנה בעברית. בוחרים את האפליקציה
    בבורר שלמעלה, לוחצים **"התקן"** וממתינים כדקה.
@@ -146,10 +146,10 @@ unaffected.
 For technical users who prefer the terminal, open **PowerShell** and paste a single line:
 
 ```powershell
-irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.4.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.5.0/install.ps1 | iex
 ```
 
-This downloads the same code, pinned to the `v2.4.0` tag and verified against the published
+This downloads the same code, pinned to the `v2.5.0` tag and verified against the published
 SHA-256 checksum, then opens the installer window. Running a remote script means trusting it; if
 you are unsure, prefer the ZIP download above (it is exactly the same code, and you can read it
 first).
@@ -158,8 +158,8 @@ Prefer no window at all? Add `RTL_SILENT` (and optionally `RTL_APP`) on the same
 whole install runs headless in the terminal:
 
 ```powershell
-$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.4.0/install.ps1 | iex
-$env:RTL_SILENT='1'; $env:RTL_APP='grokbot'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.4.0/install.ps1 | iex
+$env:RTL_SILENT='1'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.5.0/install.ps1 | iex
+$env:RTL_SILENT='1'; $env:RTL_APP='grokbot'; irm https://raw.githubusercontent.com/ElazarKrispel/desktop-rtl-patch/v2.5.0/install.ps1 | iex
 ```
 
 </details>
@@ -184,7 +184,7 @@ Every release publishes a `SHA256SUMS.txt` next to the ZIP, and the one-line ins
 automatically before extracting. To check the ZIP by hand:
 
 ```powershell
-Get-FileHash .\desktop-rtl-patch-2.4.0.zip -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+Get-FileHash .\desktop-rtl-patch-2.5.0.zip -Algorithm SHA256 | Select-Object -ExpandProperty Hash
 ```
 
 Compare the result with the line in `SHA256SUMS.txt` on the
