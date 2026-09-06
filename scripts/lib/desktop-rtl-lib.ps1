@@ -107,7 +107,10 @@ function Write-RtlLog {
     $line = "$([DateTime]::Now.ToString('o'))  [$PID]  $Message"
     Write-Host $line
     try {
-        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+        # Never create the state dir here: logging must not litter a state folder for an
+        # app that was merely enumerated. Whoever needs the folder creates it explicitly
+        # (Enter-RtlLock, Start-RtlInstallLog, Write-RtlState).
+        if (-not (Test-Path $script:StateDir)) { return }
         if ((Test-Path $script:LogFile) -and (Get-Item $script:LogFile).Length -gt 1MB) { Move-Item $script:LogFile "$($script:LogFile).old" -Force }
         Add-Content -LiteralPath $script:LogFile -Value $line -Encoding UTF8
         if ($script:InstallLogFile) { Add-Content -LiteralPath $script:InstallLogFile -Value $line -Encoding UTF8 }
@@ -251,8 +254,14 @@ function Get-RtlProfile {
                 NodeRelPath       = 'app\resources\cua_node\bin\node.exe'
                 WatcherRunName    = 'CodexRtlPatchWatcher'
                 RemoveFromCopy    = @()            # files to strip from the copy during staging
-                AssertFuseOff     = $true          # read-only asar-integrity fuse guard
+                AssertFuseOff     = $true          # asar-integrity fuse guard
                 FuseScanRelPath   = 'app\chrome.dll'   # owl runtime: the fuse wire lives in chrome.dll, not the exe
+                # Codex 26.901 ships the asar-integrity fuse ENABLED (earlier builds shipped it
+                # off). Verified empirically: flipping this one fuse byte OFF in the COPY's
+                # chrome.dll lets the injected copy launch; no exe/hash surgery is needed. The
+                # flip happens in staging only (Assert-RtlWriteAllowed + fuseoff --root guard);
+                # the original is never written.
+                FuseFlipInCopy    = $true
                 # owl runtime keeps a full Chromium profile here; Code Cache must be cleared
                 # after re-injects or V8 serves the stale pre-patch bundle.
                 UserDataDir       = (Join-Path $env:APPDATA 'Codex\web\Codex\Default')
@@ -560,6 +569,7 @@ $script:ActiveProfile = Get-RtlProfile 'codex'
 function Set-RtlActiveApp {
     param([string]$AppId = 'codex')
     $p = Get-RtlProfile $AppId
+    $changed = ($script:ActiveProfile.Id -ne $p.Id)
     $script:ActiveProfile = $p
     $script:StateDir  = $p.StateDir
     $script:BinDir    = Join-Path $p.StateDir 'bin'
@@ -575,6 +585,9 @@ function Set-RtlActiveApp {
     $script:ConfigFile          = Join-Path $p.StateDir 'config.json'
     $script:ConfigAppliedMarker = Join-Path $p.StateDir 'config-applied.sha'
     $script:PendingSelfUpdate   = Join-Path $p.StateDir 'pending-selfupdate'
+    # Records a structural failure (fuse/layout/node) for the current source signature so
+    # the tray's -Auto pass stops re-copying 2GB every 90s. See Test-RtlUpdateBlocked.
+    $script:BlockedFile         = Join-Path $p.StateDir 'blocked.json'
     # Shortcuts
     $script:ShortcutLabel   = $p.ShortcutLabel
     $script:ShortcutStart   = Join-Path ([Environment]::GetFolderPath('Programs')) ($p.ShortcutLabel + '.lnk')
@@ -601,7 +614,9 @@ function Set-RtlActiveApp {
         if ($env:ELECTRON_RUN_AS_NODE) { Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
         if ($env:ELECTRON_NO_ASAR)     { Remove-Item Env:\ELECTRON_NO_ASAR -ErrorAction SilentlyContinue }
     }
-    Write-RtlLog "Active app: $($p.DisplayName) (state=$($p.StateDir))"
+    # Log only a real switch: the tray rebinds the active app in every poll loop, and
+    # logging each rebind wrote hundreds of identical lines per app per day.
+    if ($changed) { Write-RtlLog "Active app: $($p.DisplayName) (state=$($p.StateDir))" }
 }
 
 # Join a base with an app-tree-relative path, treating an empty AppSubdir as the base
@@ -810,19 +825,35 @@ function Invoke-RtlNodeCli {
 # app's own exe (as Node). exit 0 = fuse off / not wired (ok); 20 = fuse ON (blocked).
 function Assert-RtlAsarFuseOff {
     # Node = a runnable Node (bundled node, or the exe itself for electron-as-node);
-    # ScanPath = the binary holding the fuse wire (the exe, or chrome.dll for owl).
-    param([string]$Node, [string]$ScanPath)
+    # ScanPath = the binary in the COPY/STAGING that holds the fuse wire (the exe, or
+    # chrome.dll for owl). When the fuse is ON and the profile allows it (FuseFlipInCopy),
+    # flip the single fuse byte OFF in OUR copy's binary and re-verify - the original is
+    # never touched (fuseoff refuses any path outside --root, and we pass the staging root,
+    # additionally gated by Assert-RtlWriteAllowed). Verified on Codex 26.901: with the fuse
+    # ON an injected asar aborts at startup; with the byte flipped the copy launches. If the
+    # fuse is ON and the profile does NOT allow a flip, this stays a hard [FUSE] stop.
+    param([string]$Node, [string]$ScanPath, $Profile = $script:ActiveProfile)
     if (-not $Node) { throw "[FUSE] no Node runtime available for the fuse check." }
     if (-not (Test-Path $ScanPath)) { throw "[FUSE] fuse-scan target not found: $ScanPath" }
     $editor = Get-AsarEditPath
     if (-not $editor) { throw 'asar-edit.mjs not found.' }
     $r = Invoke-RtlNodeCli -Node $Node -Arguments @($editor, 'fusestate', $ScanPath)
-    $out = $r.Out; $code = $r.Exit
-    Write-RtlLog "fusestate: $out (exit $code)"
-    if ($code -eq 20) {
-        throw "[FUSE] $($script:ActiveProfile.DisplayName) ships with the asar-integrity fuse ENABLED in this build; the copy-only method cannot patch it. Please report this so we can add fuse handling."
+    Write-RtlLog "fusestate: $($r.Out) (exit $($r.Exit))"
+    if ($r.Exit -eq 20) {
+        if (-not $Profile.FuseFlipInCopy) {
+            throw "[FUSE] $($Profile.DisplayName) ships with the asar-integrity fuse ENABLED in this build; the copy-only method cannot patch it. Please report this so we can add fuse handling."
+        }
+        Assert-RtlWriteAllowed -Profile $Profile -Path $ScanPath | Out-Null
+        Write-RtlLog "asar-integrity fuse is ENABLED in the copy; flipping it OFF (copy only)."
+        $f = Invoke-RtlNodeCli -Node $Node -Arguments @($editor, 'fuseoff', $ScanPath, '--root', $Profile.Staging)
+        Write-RtlLog "fuseoff: $($f.Out) (exit $($f.Exit))"
+        if ($f.Exit -ne 0) { throw "[FUSE] could not disable the asar-integrity fuse in the copy (exit $($f.Exit)). $($f.Out)" }
+        $chk = Invoke-RtlNodeCli -Node $Node -Arguments @($editor, 'fusestate', $ScanPath)
+        Write-RtlLog "fusestate (post-flip): $($chk.Out) (exit $($chk.Exit))"
+        if ($chk.Exit -ne 0) { throw "[FUSE] the asar-integrity fuse is still ENABLED after the flip attempt (exit $($chk.Exit))." }
+        return
     }
-    if ($code -ne 0) { Write-RtlLog "fusestate inconclusive (exit $code); proceeding on the assumption the fuse is off." }
+    if ($r.Exit -ne 0) { Write-RtlLog "fusestate inconclusive (exit $($r.Exit)); proceeding on the assumption the fuse is off." }
 }
 
 # Delete only the regeneratable Electron caches (V8 Code Cache, GPU cache) under the
@@ -1018,6 +1049,26 @@ function Test-CodexRtlRunning {
         $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
     }
     return [bool]$procs
+}
+
+# Close the patched copy (all processes whose exe lives under CopyRoot: main window,
+# renderers, helpers, a tray-resident background instance). Path-filtered exactly like
+# Test-CodexRtlRunning, so the original is never touched. Returns $true once nothing
+# under the copy is left running within the timeout.
+function Stop-CodexRtlCopy {
+    param([int]$TimeoutSec = 5)
+    $prefix = $script:CopyRoot.TrimEnd('\') + '\'
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+    } | ForEach-Object {
+        try { Stop-Process -Id $_.Id -Force -ErrorAction Stop; Write-RtlLog "Closed $($script:ActiveProfile.DisplayName) (RTL) PID $($_.Id)." } catch {}
+    }
+    $deadline = [DateTime]::Now.AddSeconds($TimeoutSec)
+    while ([DateTime]::Now -lt $deadline) {
+        if (-not (Test-CodexRtlRunning)) { return $true }
+        Start-Sleep -Milliseconds 250
+    }
+    return (-not (Test-CodexRtlRunning))
 }
 
 # Is the ORIGINAL (non-RTL) app running? Detected by exe path NOT under our copy, so
@@ -1736,6 +1787,35 @@ function Export-CodexRtlDiagnostics {
 #   UpToDate          installed and current
 #   Repair            a copy exists but its state record is missing/invalid
 #   ReinstallRequired state written by a newer tool version
+# Read-only: return the blocked.json record ONLY if it is still valid for $Signature - the
+# recorded source signature AND the recorded tool (patch) version both match the current
+# ones. A block for a different source signature (the app updated) or a different patch
+# version (a newer tool that may handle this build) is stale and is IGNORED here. This
+# function never deletes the file; the stale file is cleared only inside Invoke-CodexRtlUpdate
+# (an action path), so a status call in every poll/reconcile stays free of side effects.
+function Test-RtlUpdateBlocked {
+    param([string]$Signature)
+    if (-not $Signature) { return $null }
+    if (-not (Test-Path $script:BlockedFile)) { return $null }
+    $b = $null; try { $b = Get-Content $script:BlockedFile -Raw | ConvertFrom-Json } catch { return $null }
+    if (-not $b) { return $null }
+    if ($b.signature -eq $Signature -and $b.patchVersion -eq $script:PatchVersion) { return $b }
+    return $null
+}
+
+# Record / clear a structural-failure block (action paths only). The block binds BOTH the
+# source signature and the current tool version, so a newer tool that may handle the same
+# Codex build is never permanently suppressed (Test-RtlUpdateBlocked treats it as stale).
+function Set-RtlBlocked {
+    param([string]$Signature, [string]$ErrorMessage)
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+    $o = [ordered]@{ signature = $Signature; patchVersion = $script:PatchVersion; error = $ErrorMessage; at = (Get-Date).ToString('o') }
+    try { [System.IO.File]::WriteAllText($script:BlockedFile, (([pscustomobject]$o) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false)); Write-RtlLog "Recorded update block for signature '$Signature': $ErrorMessage" } catch {}
+}
+function Clear-RtlBlocked {
+    if (Test-Path $script:BlockedFile) { try { Remove-Item -LiteralPath $script:BlockedFile -Force; Write-RtlLog 'Cleared stale/forced update block.' } catch {} }
+}
+
 function Get-CodexRtlStatus {
     $src = $null; try { $src = Resolve-RtlSource } catch {}
     $copyOk = Test-Path (Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath)
@@ -1757,10 +1837,18 @@ function Get-CodexRtlStatus {
         InstalledVersion = $(if ($state) { $state.codexVersion } else { $null })
         CopyExists       = $copyOk
         Running          = (Test-CodexRtlRunning)
+        BlockedError     = $null
     }
+    $blocked = if ($src) { Test-RtlUpdateBlocked -Signature $src.Signature } else { $null }
+    # Priority (highest first): a newer schema needs reinstall; a copy whose source has been
+    # uninstalled is SourceMissing (this beats a stale block - never surface an old fuse error
+    # for an app that is gone); a copy without valid state needs Repair; a still-valid block on
+    # the current source is Blocked; then the normal update/patch/uptodate ladder.
     if ($state -and $state.schemaVersion -and ([int]$state.schemaVersion -gt $script:SchemaVersion)) { $o.State = 'ReinstallRequired' }
+    elseif ($copyOk -and -not $src) { $o.State = 'SourceMissing' }
     elseif (-not $state) { $o.State = $(if ($copyOk) { 'Repair' } else { 'Fresh' }) }
     elseif (-not $copyOk) { $o.State = 'Repair' }
+    elseif ($blocked) { $o.State = 'Blocked'; $o.BlockedError = [string]$blocked.error }
     elseif ($src -and $state.sourceSignature -ne $src.Signature) { $o.State = 'Update' }
     elseif ($state.patchVersion -ne $script:PatchVersion) { $o.State = 'PatchUpgrade' }
     else { $o.State = 'UpToDate' }
@@ -1789,6 +1877,19 @@ function Invoke-CodexRtlUpdate {
             Write-RtlLog "[NOCODEX] No $app install found."
             if (-not $Auto) { throw "[NOCODEX] $app not found (install it first)." }
             return
+        }
+        # Retry-storm guard - BEFORE Test-CodexSource and any staging / copy I/O. If a prior
+        # pass recorded a structural failure ([FUSE]/[LAYOUT]/[UNSUPPORTED]/[NODE]) for THIS
+        # exact source signature and tool version, an -Auto pass returns immediately instead
+        # of re-copying ~2GB every 90 seconds. -Force (tray "update now" / the wizard) always
+        # retries. A stale block (the app updated, or a newer tool) is cleared and retried.
+        if (Test-Path $script:BlockedFile) {
+            $blk = Test-RtlUpdateBlocked -Signature $src.Signature
+            if ($blk -and -not $Force) {
+                Write-RtlLog "Update blocked for this build ($($blk.error)); skipping the auto retry. Use 'update now' to retry."
+                return
+            }
+            Clear-RtlBlocked   # stale block, or an explicit forced retry
         }
         Test-CodexSource -Source $src | Out-Null   # throws [LAYOUT]/[NODE] on structural problems
 
@@ -1918,7 +2019,7 @@ function Invoke-CodexRtlUpdate {
                     # passes; it protects against a future build turning it on). Original untouched.
                     if ($p.AssertFuseOff) {
                         $fuseScan = if ($p.FuseScanRelPath) { Join-Path $script:Staging $p.FuseScanRelPath } else { $stagingExe }
-                        Assert-RtlAsarFuseOff -Node (Resolve-RtlNode -AsarPath $stagingAsar -Profile $p) -ScanPath $fuseScan
+                        Assert-RtlAsarFuseOff -Node (Resolve-RtlNode -AsarPath $stagingAsar -Profile $p) -ScanPath $fuseScan -Profile $p
                     }
                     Invoke-AsarInject -AsarPath $stagingAsar -PatchJs $patchJs -ConfigJs $cfgJs -AllowExternalNodeFallback:$AllowExternalNodeFallback
                     # Gate: a bad injection must never reach the atomic swap. Verify staging
@@ -1973,6 +2074,14 @@ function Invoke-CodexRtlUpdate {
     }
     catch [System.UnauthorizedAccessException] { throw "[AV] Access was denied, possibly blocked by antivirus or Controlled Folder Access. $($_.Exception.Message)" }
     catch [System.Security.SecurityException]   { throw "[AV] A security restriction blocked the operation, possibly antivirus. $($_.Exception.Message)" }
+    catch {
+        # Persist a block for structural failures so the auto retry storm stops (see the
+        # guard above). Only the coded structural errors are recorded; everything else just
+        # propagates. $src may be $null if resolve failed first - then there is nothing to key on.
+        $m = [string]$_.Exception.Message
+        if ($src -and $m -match '^\[(FUSE|LAYOUT|UNSUPPORTED|NODE)\]') { Set-RtlBlocked -Signature $src.Signature -ErrorMessage $m }
+        throw
+    }
     finally {
         Exit-RtlLock
     }
@@ -2306,16 +2415,15 @@ function Invoke-RtlAgentMigration {
 # Installed = the RTL COPY exe exists (the same signal Get-CodexRtlStatus uses). A
 # state file WITHOUT a copy exe is stale (a failed cleanup) and is logged, not counted.
 function Get-RtlInstalledApps {
-    $save = $script:ActiveProfile.Id
+    # Side-effect free: reads the profiles directly instead of rebinding the active app,
+    # so enumerating never touches (or creates) any app's state folder.
     $ids = @()
-    try {
-        foreach ($id in @(Get-RtlAppIds)) {
-            Set-RtlActiveApp $id | Out-Null
-            $copyExe = Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath
-            if (Test-Path $copyExe) { $ids += $id }
-            elseif (Test-Path $script:StateFile) { Write-RtlAgentLog "stale state for '$id' (no copy exe at $copyExe); not counted." }
-        }
-    } finally { Set-RtlActiveApp $save | Out-Null }
+    foreach ($id in @(Get-RtlAppIds)) {
+        $p = Get-RtlProfile $id
+        $copyExe = Join-Path $p.CopyRoot $p.ExeRelPath
+        if (Test-Path $copyExe) { $ids += $id }
+        elseif (Test-Path (Join-Path $p.StateDir 'state.json')) { Write-RtlAgentLog "stale state for '$id' (no copy exe at $copyExe); not counted." }
+    }
     return $ids
 }
 
@@ -2356,6 +2464,70 @@ function Get-RtlCommandScriptPath {
     }
     return $null
 }
+# First token of a shell/COM command (the executable), quote-aware:
+#   "C:\x\app.exe" --open-project "%1"   ->  C:\x\app.exe
+#   C:\x\app.exe,0                        ->  C:\x\app.exe   (icon-resource form)
+function Get-RtlCommandExePath {
+    param([string]$CommandLine)
+    if (-not $CommandLine) { return $null }
+    $m = [regex]::Match($CommandLine.Trim(), '^"([^"]+)"|^(\S+)')
+    if (-not $m.Success) { return $null }
+    $exe = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
+    if ($exe -match '^(.*\.(?:exe|dll)),-?\d+$') { $exe = $matches[1] }
+    return $exe
+}
+
+# The copied app registers itself in HKCU\Software\Classes at runtime exactly like the
+# original does (COM LocalServer32 classes for notifications, an Explorer "Open project
+# in ..." context-menu verb). Those entries point at the COPY's exe, so after the copy is
+# deleted they are dead, and while it exists they route the original's COM/context-menu
+# activations to the copy. Remove ONLY entries whose command exe canonicalizes to a path
+# under CopyRoot (Test-RtlPathUnderRoot); anything pointing elsewhere (WindowsApps, a
+# sibling folder such as CodexRtlDev) is left untouched. A CLSID parent is removed only
+# when nothing else remains in it. Returns the registry paths that could not be removed.
+function Remove-RtlCopyShellRegistrations {
+    param([string]$CopyRoot = $script:CopyRoot)
+    $left = @()
+    if (-not $CopyRoot) { return $left }
+    # DISCOVERY (fast): a whole-hive PowerShell enumeration is ~90s (thousands of CLSIDs);
+    # native `reg query /s /f <pattern> /d` finds the handful of data-value hits in ~0.3s.
+    # The pattern match is only a candidate filter - each hit is re-verified canonically
+    # below (parse the exe out of the command, ConvertTo-RtlCanonicalPath, Test-RtlPathUnderRoot)
+    # before ANY delete, so a false-positive substring match never removes an unrelated key.
+    $pattern = ($CopyRoot.TrimEnd('\')) + '*'
+    $hives = @('HKCU\Software\Classes\CLSID',
+               'HKCU\Software\Classes\Directory\shell',
+               'HKCU\Software\Classes\Directory\Background\shell')
+    $targets = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($h in $hives) {
+        $out = @(); try { $out = @(& reg query $h /s /f $pattern /d 2>$null) } catch {}
+        foreach ($line in $out) {
+            $t = ([string]$line).Trim()
+            if (-not $t.StartsWith('HKEY_', [StringComparison]::OrdinalIgnoreCase)) { continue }
+            # Reduce each hit to the key we would actually remove: the CLSID {guid} for a
+            # LocalServer32 hit, or the shell verb key for a command/Icon hit.
+            $keep = $t
+            if ($t -match '(?i)\\LocalServer32$') { $keep = $t -replace '(?i)\\LocalServer32$', '' }
+            elseif ($t -match '(?i)^(.*\\shell\\[^\\]+)(\\command)?$') { $keep = $matches[1] }
+            [void]$targets.Add($keep)
+        }
+    }
+    foreach ($t in $targets) {
+        $ps = 'Microsoft.PowerShell.Core\Registry::' + $t
+        # The command/exe to verify: LocalServer32 default for a CLSID, command default for a verb.
+        $verifyExe = $null
+        foreach ($vk in @((Join-Path $ps 'LocalServer32'), (Join-Path $ps 'command'))) {
+            try { if (Test-Path -LiteralPath $vk) { $v = (Get-Item -LiteralPath $vk -ErrorAction Stop).GetValue(''); if ($v) { $verifyExe = Get-RtlCommandExePath ([string]$v); break } } } catch {}
+        }
+        # Fall back to an Icon value on the key itself (context-menu verbs carry "<exe>,0").
+        if (-not $verifyExe) { try { $iv = (Get-Item -LiteralPath $ps -ErrorAction Stop).GetValue('Icon'); if ($iv) { $verifyExe = Get-RtlCommandExePath ([string]$iv) } } catch {} }
+        if (-not $verifyExe -or -not (Test-RtlPathUnderRoot -Path $verifyExe -Roots @($CopyRoot))) { continue }
+        try { Remove-Item -LiteralPath $ps -Recurse -Force -ErrorAction Stop; Write-RtlLog "removed registry $t (pointed at the copy)" }
+        catch { $left += $t; Write-RtlLog "could not remove registry $t : $($_.Exception.Message)" }
+    }
+    return $left
+}
+
 $script:RtlKnownLaunchers = @(
     'Desktop-RTL-Tray.vbs', 'Codex-RTL-Tray.vbs', 'DesktopRtlTray.ps1',
     'Watch-DesktopRtl.ps1', 'Watch-CodexRtl.ps1', 'CodexRtlTray.ps1'
@@ -2375,14 +2547,40 @@ function Test-RtlOwnedCommand {
     return (Test-RtlPathUnderRoot -Path $sp -Roots $Roots)
 }
 # Stop processes whose command is one of our launchers under $Roots (never self).
+# When the unified tray is among the targets it is asked to quit gracefully first
+# (named quit event -> the tray removes its NotifyIcon and exits), so no ghost tray
+# icon is left behind; anything still alive after the grace period is force-killed.
+# The event handle is disposed before returning, so a tray launched afterwards never
+# inherits a signaled event. Only the tray honours the event; legacy watchers are
+# simply killed. The event is signaled ONLY when AgentBinDir is a target root, so an
+# eviction of legacy per-app watchers never quits the live unified tray.
+$script:AgentQuitEventName = 'Local\DesktopRtlTrayQuit'
 function Stop-RtlOwnedProcesses {
-    param([string[]]$Roots, [int[]]$ExceptPids = @())
+    param([string[]]$Roots, [int[]]$ExceptPids = @(), [int]$GraceSec = 3)
     try {
-        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $victims = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
             $_.ProcessId -ne $PID -and ($ExceptPids -notcontains $_.ProcessId) -and (Test-RtlOwnedCommand $_.CommandLine -Roots $Roots)
-        } | ForEach-Object {
-            try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-RtlAgentLog "stopped PID $($_.ProcessId): $($_.CommandLine)" }
-            catch { Write-RtlAgentLog "could not stop PID $($_.ProcessId): $($_.Exception.Message)" }
+        })
+        if ($victims.Count -eq 0) { return }
+        $agentRoot = ConvertTo-RtlCanonicalPath $script:AgentBinDir
+        $targetsAgent = [bool]@($Roots | Where-Object { (ConvertTo-RtlCanonicalPath $_) -eq $agentRoot })
+        if ($targetsAgent) {
+            $ev = $null
+            try {
+                $ev = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $script:AgentQuitEventName)
+                [void]$ev.Set()
+                $deadline = [DateTime]::Now.AddSeconds($GraceSec)
+                while ([DateTime]::Now -lt $deadline) {
+                    $alive = @($victims | Where-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
+                    if ($alive.Count -eq 0) { break }
+                    Start-Sleep -Milliseconds 200
+                }
+            } finally { if ($ev) { try { $ev.Dispose() } catch {} } }
+        }
+        foreach ($v in $victims) {
+            if (-not (Get-Process -Id $v.ProcessId -ErrorAction SilentlyContinue)) { Write-RtlAgentLog "PID $($v.ProcessId) exited gracefully."; continue }
+            try { Stop-Process -Id $v.ProcessId -Force -ErrorAction Stop; Write-RtlAgentLog "stopped PID $($v.ProcessId): $($v.CommandLine)" }
+            catch { Write-RtlAgentLog "could not stop PID $($v.ProcessId): $($_.Exception.Message)" }
         }
     } catch {}
 }
@@ -2662,21 +2860,34 @@ function Invoke-CodexRtlUninstall {
     # caller decides that after recomputing the remaining installed apps. Returns a
     # structured result so the caller can retain the agent when cleanup is uncertain.
     # The logs folder is KEPT by default (for diagnostics); pass -PurgeLogs to delete it.
+    # Leftovers lists every path / registry key that could not be removed, so callers can
+    # show a real failure instead of "done" when Certain is $false.
     param([switch]$PurgeLogs)
-    if (Test-CodexRtlRunning) { throw '[LOCK] Codex (RTL) is running. Close it and try again.' }
+    if (Test-CodexRtlRunning) { throw "[LOCK] $($script:ActiveProfile.DisplayName) (RTL) is running. Close it and try again." }
     if (-not (Enter-RtlLock)) { throw '[LOCK] An update is in progress; try again in a moment.' }
     $uncertain = $false
+    $leftovers = @()
+    # A tree that is briefly held open (antivirus scanning a freshly touched file, an
+    # Explorer window, a search indexer) fails Remove-Item on the first try and succeeds
+    # a moment later; retry before declaring the cleanup uncertain.
+    function Remove-RtlPathRetry([string]$Path, [switch]$Recurse) {
+        for ($i = 1; $i -le 3; $i++) {
+            try { Remove-Item -LiteralPath $Path -Recurse:$Recurse -Force -ErrorAction Stop; Write-RtlLog "removed $Path"; return $true }
+            catch { if ($i -lt 3) { Start-Sleep -Milliseconds 1500 } else { Write-RtlLog "could not remove $Path : $($_.Exception.Message)" } }
+        }
+        return $false
+    }
     try {
         Stop-CodexRtlWatcher   # stop only THIS app's legacy watcher (path/-App scoped); never the agent tray
         foreach ($d in @($script:CopyRoot, $script:Staging, $script:OldRoot, $script:BinDir, "$($script:BinDir).staging", "$($script:BinDir).old")) {
-            if (Test-Path $d) {
-                try { Remove-Item -LiteralPath $d -Recurse -Force; Write-RtlLog "removed $d" }
-                catch { $uncertain = $true; Write-RtlLog "could not remove $d : $($_.Exception.Message)" }
-            }
+            if ((Test-Path $d) -and -not (Remove-RtlPathRetry $d -Recurse)) { $uncertain = $true; $leftovers += $d }
         }
         foreach ($lnk in $script:ShortcutPaths) {
-            if (Test-Path $lnk) { try { Remove-Item -LiteralPath $lnk -Force; Write-RtlLog "removed $lnk" } catch { $uncertain = $true } }
+            if ((Test-Path $lnk) -and -not (Remove-RtlPathRetry $lnk)) { $uncertain = $true; $leftovers += $lnk }
         }
+        # Registry entries the copied app wrote about itself (COM classes, Explorer verb).
+        $regLeft = @(Remove-RtlCopyShellRegistrations -CopyRoot $script:CopyRoot)
+        if ($regLeft.Count) { $uncertain = $true; $leftovers += $regLeft }
         # The generated launcher (LaunchScript profiles) lives in StateDir next to the state,
         # and a plain uninstall KEEPS StateDir (for the logs), so it has to be deleted here or
         # it is orphaned. Listed explicitly rather than relying on -PurgeLogs.
@@ -2693,16 +2904,10 @@ function Invoke-CodexRtlUninstall {
             $extraDirs += (Join-Path $script:StateDir 'artifact.work')
         }
         foreach ($d in $extraDirs) {
-            if (Test-Path $d) {
-                try { Remove-Item -LiteralPath $d -Recurse -Force; Write-RtlLog "removed $d" }
-                catch { $uncertain = $true; Write-RtlLog "could not remove $d : $($_.Exception.Message)" }
-            }
+            if ((Test-Path $d) -and -not (Remove-RtlPathRetry $d -Recurse)) { $uncertain = $true; $leftovers += $d }
         }
-        foreach ($f in (@($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, $launcher) + $extraFiles)) {
-            if ($f -and (Test-Path $f)) {
-                try { Remove-Item -LiteralPath $f -Force; Write-RtlLog "removed $f" }
-                catch { $uncertain = $true; Write-RtlLog "could not remove $f : $($_.Exception.Message)" }
-            }
+        foreach ($f in (@($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, $script:BlockedFile, $launcher) + $extraFiles)) {
+            if ($f -and (Test-Path $f) -and -not (Remove-RtlPathRetry $f)) { $uncertain = $true; $leftovers += $f }
         }
         # Remove this app's LEGACY per-app Run value if it is still ours (the agent replaces it).
         try {
@@ -2710,8 +2915,8 @@ function Invoke-CodexRtlUninstall {
             $val = (Get-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue).$legacy
             if ($val -and (Test-RtlOwnedCommand $val)) { Remove-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue; Write-RtlLog "removed legacy Run value $legacy" }
         } catch {}
-        if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-Item -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true } }
+        if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-Item -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true; $leftovers += $script:LogsDir } }
         Write-RtlLog "Per-app uninstall complete (app=$($script:ActiveProfile.Id), certain=$(-not $uncertain))."
     } finally { Exit-RtlLock }
-    return [pscustomobject]@{ App = $script:ActiveProfile.Id; Certain = (-not $uncertain) }
+    return [pscustomobject]@{ App = $script:ActiveProfile.Id; Certain = (-not $uncertain); Leftovers = $leftovers }
 }

@@ -99,6 +99,15 @@ $script:Created = $false
 $script:Mutex = New-Object System.Threading.Mutex($true, 'Local\DesktopRtlTray', [ref]$script:Created)
 if (-not $script:Created -and -not $SelfTest) { return }
 
+# Named quit event: an installer / uninstaller / self-update signals it (via
+# Stop-RtlOwnedProcesses) so this tray removes its NotifyIcon and exits cleanly, leaving
+# no ghost icon. We only ever READ it (WaitOne(0) in the drain timer); the signaller owns
+# Set() and Dispose(). We never Reset() it - a Reset in a freshly launched instance could
+# swallow a quit aimed at the previous one; once every handle is closed the named event
+# disappears, so a new instance always gets a fresh, un-signaled one.
+$script:QuitEvent = $null
+try { $script:QuitEvent = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\DesktopRtlTrayQuit') } catch {}
+
 # --- self-healing: consolidate autostart, evict any legacy watchers ----------
 if (-not $SelfTest) {
     try { Invoke-RtlAgentMigration } catch { Write-RtlAgentLog "migration at startup failed: $($_.Exception.Message)" }
@@ -129,6 +138,7 @@ $script:Apps = @()          # current installed-app id snapshot
 $script:AppSig = "`0"       # signature of {installed set + sources}; forces first reconcile
 $script:Generation = 0      # bumped on reconcile; invalidates an in-flight pass
 $script:LastErr = @{}       # appId -> last error string (balloon de-duplication)
+$script:Announced = @{}     # appId -> last announced status (balloon de-dup for SourceMissing)
 # Pending work accumulated while a pass is busy (replayed on completion).
 $script:Pending = @{ appIds = @{}; force = $false }
 $script:Fsws = @()
@@ -231,11 +241,34 @@ $script:MenuAction = {
     $t = $s.Tag
     if (-not $t) { return }
     switch ($t.Action) {
-        'open'     { Invoke-AppAction $t.App { if (Test-RtlSharedInstanceConflict) { Show-TrayBalloon 'לפני פתיחה' "הגרסה המקורית פתוחה; בגלל מגבלת מופע יחיד ייתכן שהיא תקבל מיקוד." 'Warning' }; [void](Start-RtlCopyApp) } }
-        'update'   { Start-TrayPass -Apps @($t.App) -Force }
-        'settings' { Open-AppSettings $t.App }
-        'diag'     { Invoke-AppAction $t.App { $z = Export-CodexRtlDiagnostics; if ($z) { Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,`"$z`"" } } }
+        'open'      { Invoke-AppAction $t.App { if (Test-RtlSharedInstanceConflict) { Show-TrayBalloon 'לפני פתיחה' "הגרסה המקורית פתוחה; בגלל מגבלת מופע יחיד ייתכן שהיא תקבל מיקוד." 'Warning' }; [void](Start-RtlCopyApp) } }
+        'update'    { Start-TrayPass -Apps @($t.App) -Force }
+        'settings'  { Open-AppSettings $t.App }
+        'diag'      { Invoke-AppAction $t.App { $z = Export-CodexRtlDiagnostics; if ($z) { Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,`"$z`"" } } }
+        'uninstall' { Start-AppUninstall $t.App }
     }
+}
+
+# Remove one app's RTL copy in a SEPARATE hidden process, so the ~2GB delete never freezes
+# the tray. That process runs the full lifecycle (Invoke-CodexRtlUninstall + agent
+# reconcile): if apps remain it restarts this tray so it re-detects the reduced set; if it
+# was the last app it tears the agent down (signaling our quit event, which the drain timer
+# catches for a clean exit). A partial removal keeps the agent and this tray alive.
+function Start-AppUninstall([string]$id) {
+    $label = Get-RtlAppLabel $id
+    $r = [System.Windows.Forms.MessageBox]::Show(
+        "להסיר את $label? יוסרו העותק, הקיצורים, רישומי המערכת והעדכון האוטומטי. המקור לא ייפגע, והלוגים יישמרו.",
+        'Desktop RTL', 'YesNo', 'Question')
+    if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    $lib = $script:LibPath
+    $ps = (Get-Command powershell.exe).Source
+    $inner = ". `"$lib`"; Set-RtlActiveApp '$id'; " +
+        'if (Test-CodexRtlRunning) { [void](Stop-CodexRtlCopy) }; ' +
+        '$res = Invoke-CodexRtlUninstall; $rem = @(Get-RtlInstalledApps); ' +
+        'if ($rem.Count -gt 0) { Register-RtlAgent; Restart-RtlAgentTray } ' +
+        'elseif ($res.Certain) { Invoke-RtlAgentLastCleanup } else { Restart-RtlAgentTray }'
+    Start-Process -FilePath $ps -WindowStyle Hidden -ArgumentList @('-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', $inner)
+    Show-TrayBalloon $label 'מסיר את ההתקנה...' 'Info'
 }
 function New-AppMenuItem([string]$text, [string]$id, [string]$action) {
     $mi = New-Object System.Windows.Forms.ToolStripMenuItem $text
@@ -256,6 +289,7 @@ function Build-Menu {
         [void]$menu.Items.Add((New-AppMenuItem 'עדכן עכשיו' $id 'update'))
         [void]$menu.Items.Add((New-AppMenuItem 'הגדרות...' $id 'settings'))
         [void]$menu.Items.Add((New-AppMenuItem 'אבחון...' $id 'diag'))
+        [void]$menu.Items.Add((New-AppMenuItem 'הסר התקנה...' $id 'uninstall'))
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     } elseif ($apps.Count -gt 1) {
         # A submenu per installed app.
@@ -265,6 +299,7 @@ function Build-Menu {
             [void]$sub.DropDownItems.Add((New-AppMenuItem 'עדכן עכשיו' $id 'update'))
             [void]$sub.DropDownItems.Add((New-AppMenuItem 'הגדרות...' $id 'settings'))
             [void]$sub.DropDownItems.Add((New-AppMenuItem 'אבחון...' $id 'diag'))
+            [void]$sub.DropDownItems.Add((New-AppMenuItem 'הסר התקנה...' $id 'uninstall'))
             [void]$menu.Items.Add($sub)
         }
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -433,6 +468,9 @@ function Start-ToolCheck {
 $drain = New-Object System.Windows.Forms.Timer
 $drain.Interval = 250
 $drain.Add_Tick({
+        # A setup/uninstall/self-update elsewhere asked the tray to quit: exit cleanly so
+        # no ghost NotifyIcon is left behind. Checked before anything else, every tick.
+        if (-not $script:Disposed -and $script:QuitEvent -and $script:QuitEvent.WaitOne(0)) { Invoke-TrayQuit; return }
         if (-not ($script:Sync.Busy -and $script:Sync.Done)) { return }
         $op = $script:Sync.Op
         try { if ($script:PassPs) { $script:PassPs.Dispose() } } catch {}
@@ -517,14 +555,24 @@ function Update-TrayStatus {
         foreach ($id in $script:Apps) {
             Set-RtlActiveApp $id | Out-Null
             $st = $null; try { $st = Get-CodexRtlStatus } catch {}
-            $s = switch ($(if ($st) { $st.State } else { '' })) {
-                'UpToDate'     { 'מעודכן' }
-                'Update'       { 'עדכון זמין' }
-                'PatchUpgrade' { 'עדכון תיקון' }
-                'Repair'       { 'דרוש תיקון' }
-                'Fresh'        { 'לא מותקן' }
-                default        { '' }
+            $state = if ($st) { $st.State } else { '' }
+            $s = switch ($state) {
+                'UpToDate'      { 'מעודכן' }
+                'Update'        { 'עדכון זמין' }
+                'PatchUpgrade'  { 'עדכון תיקון' }
+                'Repair'        { 'דרוש תיקון' }
+                'SourceMissing' { 'המקור הוסר' }
+                'Blocked'       { 'נכשל, דרוש עדכון לכלי' }
+                'Fresh'         { 'לא מותקן' }
+                default         { '' }
             }
+            # Announce a state change once per app (no repeat balloon every poll).
+            if ($state -in @('SourceMissing', 'Blocked') -and $script:Announced[$id] -ne $state) {
+                $label = (Get-RtlProfile $id).DisplayName
+                if ($state -eq 'SourceMissing') { Show-TrayBalloon "$label - המקור הוסר" "עותק ה-RTL עדיין מותקן. אפשר להסיר אותו מתפריט המגש." 'Warning' }
+                else { Show-TrayBalloon "$label - העדכון נכשל" 'ייתכן שצריך עדכון לכלי ה-RTL.' 'Warning' }
+            }
+            if ($state) { $script:Announced[$id] = $state }
             $parts += ((Get-RtlProfile $id).DisplayName + ': ' + $s)
         }
     } finally { Set-RtlActiveApp $save | Out-Null }
@@ -540,6 +588,7 @@ function Invoke-TrayQuit {
     foreach ($w in $script:Fsws) { try { $w.EnableRaisingEvents = $false; $w.Dispose() } catch {} }
     try { $ni.Visible = $false; $ni.Dispose() } catch {}
     try { if ($script:BadgedIcon -and $script:BadgedIcon -ne $script:BaseIcon) { $script:BadgedIcon.Dispose() } } catch {}
+    try { if ($script:QuitEvent) { $script:QuitEvent.Dispose(); $script:QuitEvent = $null } } catch {}
     try { if ($script:Mutex) { $script:Mutex.ReleaseMutex(); $script:Mutex.Dispose() } } catch {}
     try { [System.Windows.Forms.Application]::Exit() } catch {}
 }
@@ -551,10 +600,13 @@ Update-TrayStatus
 
 if ($SelfTest) {
     $layout = if ($script:Apps.Count -eq 1) { 'flat' } elseif ($script:Apps.Count -gt 1) { 'submenu-per-app' } else { 'no-app' }
-    Write-Host ("SelfTest OK: apps=[{0}] layout={1} menuItems={2} autoPatch={3} badgeBuilt={4}" -f `
-        ($script:Apps -join ','), $layout, $ni.ContextMenuStrip.Items.Count, $script:AgentConfig.autoPatch, ($script:BadgedIcon -ne $script:BaseIcon))
+    $quitSignaled = $false; try { $quitSignaled = ($script:QuitEvent -and $script:QuitEvent.WaitOne(0)) } catch {}
+    Write-Host ("SelfTest OK: apps=[{0}] layout={1} menuItems={2} autoPatch={3} badgeBuilt={4} quitEvent={5} quitSignaled={6}" -f `
+        ($script:Apps -join ','), $layout, $ni.ContextMenuStrip.Items.Count, $script:AgentConfig.autoPatch, ($script:BadgedIcon -ne $script:BaseIcon), `
+        [bool]$script:QuitEvent, $quitSignaled)
     try { $ni.Visible = $false; $ni.Dispose() } catch {}
     try { $form.Dispose() } catch {}
+    try { if ($script:QuitEvent) { $script:QuitEvent.Dispose() } } catch {}
     try { if ($script:Created) { $script:Mutex.ReleaseMutex(); $script:Mutex.Dispose() } } catch {}
     return
 }

@@ -175,6 +175,94 @@ try {
     Assert-True (-not (Test-Path $launcher)) 'plain uninstall removes the launcher'
 
 
+    # ---- uninstall: partial (locked file) reports leftovers, not success -----
+    Set-RtlActiveApp grokbot | Out-Null
+    New-Item -ItemType Directory -Force -Path $grok.CopyRoot | Out-Null
+    $locked = Join-Path $grok.CopyRoot 'locked.bin'
+    [IO.File]::WriteAllText($locked, 'x')
+    $fs = [IO.File]::Open($locked, 'Open', 'Read', 'None')   # exclusive: blocks deletion
+    try {
+        $res = Invoke-CodexRtlUninstall
+        Assert-True (-not $res.Certain) 'uninstall with a locked file reports Certain=$false'
+        Assert-True (@($res.Leftovers).Count -ge 1) 'uninstall with a locked file lists leftovers'
+    } finally { $fs.Close() }
+    $res2 = Invoke-CodexRtlUninstall
+    Assert-True ($res2.Certain) 'uninstall after the lock is released reports Certain=$true'
+    Assert-True (-not (Test-Path $grok.CopyRoot)) 'the copy root is gone after the clean uninstall'
+
+    # ---- blocked.json: retry-storm guard, tool-version awareness, read-only status ----
+    Set-RtlActiveApp grokbot | Out-Null
+    New-Item -ItemType Directory -Force -Path $grok.StateDir | Out-Null
+    Set-RtlBlocked -Signature 'sigA' -ErrorMessage '[FUSE] test'
+    Assert-True ($null -ne (Test-RtlUpdateBlocked -Signature 'sigA')) 'block is honoured for the same signature + tool version'
+    Assert-True ($null -eq (Test-RtlUpdateBlocked -Signature 'sigB')) 'block is ignored for a different source signature (app updated)'
+    # A block written by a different (older) tool version must be treated as stale.
+    $stale = [ordered]@{ signature = 'sigA'; patchVersion = '0.0.0-old'; error = '[FUSE] old'; at = (Get-Date).ToString('o') }
+    [IO.File]::WriteAllText($script:BlockedFile, (([pscustomobject]$stale) | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+    Assert-True ($null -eq (Test-RtlUpdateBlocked -Signature 'sigA')) 'block from a different tool version is stale (a newer tool may handle it)'
+    Clear-RtlBlocked
+    Assert-True (-not (Test-Path $script:BlockedFile)) 'Clear-RtlBlocked removes the file'
+
+    # SourceMissing beats a stale block, and status never mutates state (read-only).
+    Set-RtlActiveApp grokbot | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $grok.CopyRoot $grok.ExeRelPath) -Parent) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $grok.CopyRoot $grok.ExeRelPath), 'exe')   # copy present, no source installed
+    Set-RtlBlocked -Signature 'whatever' -ErrorMessage '[FUSE] leftover'
+    $st = Get-CodexRtlStatus
+    Assert-True ($st.State -eq 'SourceMissing') 'copy present + source gone => SourceMissing (beats a stale block)'
+    Assert-True (Test-Path $script:BlockedFile) 'Get-CodexRtlStatus does NOT delete blocked.json (read-only)'
+    Remove-Item $script:BlockedFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $grok.CopyRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+    # ---- enumeration / logging must not create state folders -----------------
+    Set-RtlActiveApp opencode | Out-Null
+    Remove-Item $script:StateDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath) -Force -ErrorAction SilentlyContinue
+    [void](Get-RtlInstalledApps)
+    Assert-True (-not (Test-Path $script:StateDir)) 'Get-RtlInstalledApps does not create a state folder'
+    Write-RtlLog 'harness: log with no state dir'
+    Assert-True (-not (Test-Path $script:StateDir)) 'Write-RtlLog does not create the state folder when it is absent'
+
+    # ---- fuseoff: flips one byte, idempotent, refuses paths outside --root ----
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if ($node) {
+        $fuseDir = Join-Path $temp 'fuse'; New-Item -ItemType Directory -Force -Path $fuseDir | Out-Null
+        # Copy the editor into the ASCII temp tree: node on Windows can fail to resolve a
+        # module path that contains non-ASCII characters (the repo path has Hebrew), which
+        # is a test-harness artifact, not a product issue (the deployed bin path is ASCII).
+        # NB: $repo is clobbered after the dot-source ($script:Repo in the lib aliases it,
+        # PS vars are case-insensitive), so derive the source path from $PSScriptRoot.
+        $editor = Join-Path $fuseDir 'asar-edit.mjs'
+        Copy-Item (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\lib\asar-edit.mjs') $editor -Force
+        $fake = Join-Path $fuseDir 'fake.bin'
+        $sentinel = [Text.Encoding]::ASCII.GetBytes('dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX')  # sentinel is pure ASCII (PS 5.1 has no ::Latin1)
+        $bytes = [byte[]]@(0x41) * 64 + $sentinel + [byte[]]@(1, 9) + [Text.Encoding]::ASCII.GetBytes('010011001') + [byte[]]@(0x42) * 16
+        [IO.File]::WriteAllBytes($fake, $bytes)
+        $before = (Get-Item $fake).Length
+        # node writes to stderr on the refusal path; under -ErrorActionPreference Stop that
+        # becomes a terminating NativeCommandError, so relax it just for these native calls.
+        $savedEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try {
+            & $node $editor fuseoff $fake '--root' $fuseDir *> $null
+            Assert-True ($LASTEXITCODE -eq 0) 'fuseoff exits 0 on a valid wire under --root'
+            Assert-True ((Get-Item $fake).Length -eq $before) 'fuseoff keeps the file length unchanged'
+            & $node $editor fusestate $fake *> $null
+            Assert-True ($LASTEXITCODE -eq 0) 'fusestate reports the fuse disabled after the flip'
+            & $node $editor fuseoff $fake '--root' $fuseDir *> $null
+            Assert-True ($LASTEXITCODE -eq 0) 'fuseoff is a no-op success when already disabled'
+            & $node $editor fuseoff $fake '--root' (Join-Path $temp 'other-root') *> $null
+            Assert-True ($LASTEXITCODE -eq 22) 'fuseoff refuses a target outside --root'
+        } finally { $ErrorActionPreference = $savedEap }
+    } else {
+        Write-Host '  (node not on PATH; skipping fuseoff CLI checks)'
+    }
+
+    # ---- tray quit event: signal, dispose, reopen must be un-signaled --------
+    $ev = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\DesktopRtlTrayQuit')
+    [void]$ev.Set(); $ev.Dispose()
+    $ev2 = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\DesktopRtlTrayQuit')
+    try { Assert-True (-not $ev2.WaitOne(0)) 'a fresh quit-event handle is not signaled after the prior one was disposed' } finally { $ev2.Dispose() }
+
     New-Item -ItemType Directory -Force -Path (Join-Path $temp 'empty-artifact') | Out-Null
 
     # ---- Herdr: prebuilt native-binary profile -------------------------------

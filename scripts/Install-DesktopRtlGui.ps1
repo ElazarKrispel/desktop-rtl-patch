@@ -277,12 +277,22 @@ function Update-Buttons {
     $btnPrimary.Enabled = $true; $btnSecondary.Visible = $false; $btnUninstall.Visible = $false
     $st = $null; try { $st = Get-CodexRtlStatus } catch {}
     if (-not $st -or -not $st.CodexFound) {
-        $status.Text = "$appName אינו מותקן. התקן/י אותו ואז לחץ/י ""בדוק שוב""."
+        if ($st -and $st.CopyExists) {
+            # The original was uninstalled but our RTL copy is still here (SourceMissing).
+            $status.Text = "$appName המקורי הוסר מהמחשב. אפשר להסיר את עותק ה-RTL, או להתקין מחדש את $appName ואז ""בדוק שוב""."
+            $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
+        } else {
+            $status.Text = "$appName אינו מותקן. התקן/י אותו ואז לחץ/י ""בדוק שוב""."
+        }
         $btnPrimary.Text = 'בדוק שוב'; $btnPrimary.Tag = 'recheck'
-        if ($st -and $st.CopyExists) { $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true }
         return
     }
     switch ($st.State) {
+        'Blocked' {
+            $status.Text = "העדכון לגרסה החדשה של $appName נכשל ($($st.BlockedError)). ייתכן שצריך עדכון לכלי ה-RTL. אפשר לנסות שוב."
+            $btnPrimary.Text = 'נסה שוב'; $btnPrimary.Tag = 'install'
+            $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
+        }
         'Update' {
             $status.Text = "$appName עודכן לגרסה $($st.AvailableVersion). נעדכן את גרסת ה-RTL."
             $btnPrimary.Text = 'עדכן'; $btnPrimary.Tag = 'install'
@@ -318,12 +328,23 @@ function Update-Buttons {
 }
 
 # --- Background install ------------------------------------------------------
+# Offer to close the running RTL copy (it may be a background instance left after the
+# window was closed). Returns $true when it is safe to proceed (not running, or closed).
+function Confirm-CloseRtlCopy {
+    $appName = $script:ActiveProfile.DisplayName
+    if (-not (Test-CodexRtlRunning)) { return $true }
+    $r = [System.Windows.Forms.MessageBox]::Show(
+        "$appName (RTL) פתוח כרגע (ייתכן שברקע). לסגור אותו ולהמשיך?",
+        'Desktop RTL', 'YesNo', 'Question')
+    if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return $false }
+    if (Stop-CodexRtlCopy) { return $true }
+    [System.Windows.Forms.MessageBox]::Show("לא הצלחתי לסגור את $appName (RTL). סגור/י אותו ידנית ונסה/י שוב.", 'Desktop RTL', 'OK', 'Warning') | Out-Null
+    return $false
+}
+
 function Start-Install {
     $appName = $script:ActiveProfile.DisplayName
-    if (Test-CodexRtlRunning) {
-        [System.Windows.Forms.MessageBox]::Show("$appName (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.", 'Desktop RTL', 'OK', 'Warning') | Out-Null
-        return
-    }
+    if (-not (Confirm-CloseRtlCopy)) { return }
     $script:Sync.Done = $false; $script:Sync.Ok = $false; $script:Sync.Err = $null
     $script:Sync.StepKey = ''; $script:Sync.StepPct = 0; $script:Sync.StepMarquee = $false
     $script:Sync.Op = 'install'; $script:Sync.Busy = $true
@@ -363,12 +384,9 @@ function Start-Install {
 # --- Background uninstall ----------------------------------------------------
 function Start-Uninstall {
     $appName = $script:ActiveProfile.DisplayName
-    if (Test-CodexRtlRunning) {
-        [System.Windows.Forms.MessageBox]::Show("$appName (RTL) פתוח כרגע. סגור/י אותו ואז נסה/י שוב.", 'Desktop RTL', 'OK', 'Warning') | Out-Null
-        return
-    }
+    if (-not (Confirm-CloseRtlCopy)) { return }
     $r = [System.Windows.Forms.MessageBox]::Show(
-        "להסיר את $appName (RTL)? יוסרו העותק, הקיצורים והעדכון האוטומטי. ה-$appName המקורי לא ייפגע, וקובצי הלוג יישמרו.",
+        "להסיר את $appName (RTL)? יוסרו העותק, הקיצורים, רישומי המערכת והעדכון האוטומטי. ה-$appName המקורי לא ייפגע. נתוני ההתחברות והמטמון (המשותפים עם $appName המקורי) וקובצי הלוג יישמרו.",
         'Desktop RTL', 'YesNo', 'Question')
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     $script:Sync.Done = $false; $script:Sync.Ok = $false; $script:Sync.Err = $null
@@ -398,6 +416,9 @@ function Start-Uninstall {
                 $remaining = @(Get-RtlInstalledApps)
                 if ($remaining.Count -gt 0) { Register-RtlAgent; Restart-RtlAgentTray }
                 elseif ($res.Certain) { Invoke-RtlAgentLastCleanup }
+                else { Restart-RtlAgentTray }   # partial: leave the agent running so a retry is possible
+                # A partial removal must report a real failure, not "done".
+                if (-not $res.Certain) { throw ('[PARTIAL] ' + (@($res.Leftovers) -join ', ')) }
                 $sync.Ok = $true
             }
             catch { $sync.Err = $_.Exception.Message }

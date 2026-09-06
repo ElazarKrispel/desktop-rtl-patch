@@ -32,6 +32,7 @@
 
 import fs from "node:fs";
 import crypto from "node:crypto";
+import path from "node:path";
 
 const PAYLOAD_NAME = process.env.RTL_PAYLOAD_NAME || "desktop-rtl-patch.js";
 const CONFIG_NAME = process.env.RTL_CONFIG_NAME || "desktop-rtl-config.js";
@@ -68,6 +69,10 @@ if (cmd === "inject") {
   const [exePath] = rest;
   if (!exePath) usage();
   doFuseState(exePath);
+} else if (cmd === "fuseoff") {
+  const [binPath, rootFlag, root] = rest;
+  if (!binPath || rootFlag !== "--root" || !root) usage();
+  doFuseOff(binPath, root);
 } else {
   usage();
 }
@@ -89,7 +94,50 @@ function usage() {
   console.error("       node asar-edit.mjs config <app.asar> <config.js> [--no-bak|bakPath]");
   console.error("       node asar-edit.mjs verify <app.asar>");
   console.error("       node asar-edit.mjs fusestate <app.exe>");
+  console.error("       node asar-edit.mjs fuseoff <binary> --root <copy-or-staging-dir>");
   process.exit(2);
+}
+
+/* -------------------------------- fuse off ------------------------------- */
+
+// Turn the EnableEmbeddedAsarIntegrityValidation fuse OFF in OUR COPY's binary (never the
+// original): a single in-place byte write, '1' -> '0', at fuse index 4. Verified live on
+// Codex 26.901 (owl runtime, wire in chrome.dll): with the fuse ON an injected asar aborts
+// at startup with "Integrity check failed for asar archive"; with this one byte flipped the
+// injected copy launches normally, and no exe/hash surgery is needed. Every invariant is
+// checked BEFORE the write, and the result is re-read and diffed AFTER:
+//   21 unreadable; 22 target not under --root; 23 unexpected fuse structure; 24 verify failed.
+// Being already off is a no-op success (exit 0). Refuses any path outside --root, so the
+// original install can never be written even if a wrong path is passed.
+function doFuseOff(binPath, root) {
+  const abs = path.resolve(binPath);
+  const rootAbs = path.resolve(root);
+  const underRoot = abs.toLowerCase() === rootAbs.toLowerCase() ||
+    abs.toLowerCase().startsWith(rootAbs.toLowerCase() + path.sep);
+  if (!underRoot) { console.error("fuseoff refused: " + abs + " is not under --root " + rootAbs); process.exit(22); }
+  let buf;
+  try { buf = fs.readFileSync(abs); }
+  catch (e) { console.error("cannot read binary: " + (e && e.message)); process.exit(21); }
+  const at = buf.indexOf(FUSE_SENTINEL);
+  if (at < 0) { console.error("fuseoff: fuse sentinel not found"); process.exit(23); }
+  if (buf.indexOf(FUSE_SENTINEL, at + 1) >= 0) { console.error("fuseoff: more than one fuse sentinel; refusing"); process.exit(23); }
+  const version = buf[at + FUSE_SENTINEL.length];
+  const count = buf[at + FUSE_SENTINEL.length + 1];
+  if (version !== 1) { console.error("fuseoff: unexpected fuse wire version " + version); process.exit(23); }
+  if (FUSE_ASAR_INTEGRITY_INDEX >= count) { console.error("fuseoff: fuse index out of range (count=" + count + ")"); process.exit(23); }
+  const pos = at + FUSE_SENTINEL.length + 2 + FUSE_ASAR_INTEGRITY_INDEX;
+  const cur = String.fromCharCode(buf[pos]);
+  if (cur === "0") { console.log("fuseoff: asar-integrity already disabled (no change)"); process.exit(0); }
+  if (cur !== "1") { console.error("fuseoff: fuse byte is '" + cur + "', not '0'/'1'; refusing"); process.exit(23); }
+  const fd = fs.openSync(abs, "r+");
+  try { fs.writeSync(fd, Buffer.from("0", "latin1"), 0, 1, pos); } finally { fs.closeSync(fd); }
+  const after = fs.readFileSync(abs);
+  const onlyThatByteChanged = after.length === buf.length && after[pos] === 0x30 &&
+    Buffer.compare(after.subarray(0, pos), buf.subarray(0, pos)) === 0 &&
+    Buffer.compare(after.subarray(pos + 1), buf.subarray(pos + 1)) === 0;
+  if (!onlyThatByteChanged) { console.error("fuseoff: post-write verification failed"); process.exit(24); }
+  console.log("fuseoff: asar-integrity disabled (1 byte @" + pos + ", length " + after.length + " unchanged)");
+  process.exit(0);
 }
 
 /* ------------------------------ fuse state ------------------------------- */
