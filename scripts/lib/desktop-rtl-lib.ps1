@@ -1932,7 +1932,11 @@ function Invoke-CodexRtlUpdate {
                 if (-not $Auto) { throw ([string]$blk.error) }
                 return
             }
-            if ($Force -or -not (Get-RtlBlockRecord -Signature $src.Signature)) { Clear-RtlBlocked }
+            # -Force BYPASSES the block but does NOT clear it here: only a genuine success clears
+            # it (below), so a forced retry that merely defers (copy running) or fails again keeps
+            # the record instead of losing it. A stale record (source or tool version changed) is
+            # always safe to drop; a same-build streak below threshold is kept so it can accumulate.
+            if (-not (Get-RtlBlockRecord -Signature $src.Signature)) { Clear-RtlBlocked }
         }
         Test-CodexSource -Source $src | Out-Null   # throws [LAYOUT]/[NODE] on structural problems
 
@@ -1940,8 +1944,10 @@ function Invoke-CodexRtlUpdate {
             # Native-binary target (Herdr): the RTL fix is compiled into the binary, so
             # there is nothing to copy from the user's install and nothing to inject.
             # Everything below this point assumes an Electron tree; see desktop-rtl-herdr.ps1.
+            # Invoke-HerdrRtlInstall clears the block itself, but ONLY on a real success
+            # (up-to-date or a completed install) - never on a defer, which downloads/verifies
+            # nothing, so a forced retry that defers keeps a latched block until it truly succeeds.
             Invoke-HerdrRtlInstall -Source $src -Force:$Force -Auto:$Auto -Profile $p
-            Clear-RtlBlocked   # herdr install succeeded (no throw) - reset any failure streak
             return
         }
 

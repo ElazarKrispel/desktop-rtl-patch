@@ -545,6 +545,7 @@ function Invoke-HerdrRtlInstall {
 
     if (-not $Force -and $current -eq $Source.Signature -and (Test-Path $copyExe) -and $patchCurrent) {
         Write-RtlLog "Up to date ($app v$($Source.Version), patch $($script:PatchVersion))."
+        Clear-RtlBlocked   # a clean up-to-date pass resets any consecutive-failure streak
         # Settings may have changed while the RTL build was open; the config is a plain
         # file outside the copy, so it can always be refreshed.
         try { Sync-HerdrRtlConfig -Source $Source -Profile $Profile | Out-Null }
@@ -599,6 +600,7 @@ function Invoke-HerdrRtlInstall {
         asarSha256      = $null
     }
     Set-RtlConfigApplied
+    Clear-RtlBlocked   # full success (built, verified, swapped) resets any failure streak
     Write-RtlLog "DONE: $app (RTL) $($live.Version) installed (bidi=$bidi)."
     Set-RtlStep 'done' 100
     if ($Auto) { Show-RtlToast "$app RTL updated" "Herdr (RTL) $($live.Version) is ready." }
