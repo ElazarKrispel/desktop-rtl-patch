@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "repository": "ElazarKrispel/desktop-rtl-patch",
+  "reviewDate": "2026-09-07",
+  "reviewedCommit": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "reviewedVersion": "v2.5.0",
+  "mainCommitReadDuringHandoff": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "baseTree": "48c12ead0db8a2db8f9a8e3d3330a8dd9a1878b9",
+  "scope": "Documentation and synthetic review fixtures only. No application-code changes or release authorization.",
+  "originalReport": {
+    "sourceName": "desktop-rtl-strategic-review-he.md",
+    "repositoryPath": "REPORT.he.md",
+    "bytes": 44590,
+    "lines": 382,
+    "sha256": "2703a6486baa54093ea766346700c45c0bf7825a4b89e7f3e01ac303063995f5",
+    "gitBlobSha": "28010fe083d44ec07d8bedf406492bd80199fe62",
+    "preservation": "Exact original UTF-8 report, not a shortened replacement."
+  },
+  "evidenceArchiveSource": {
+    "sourceName": "desktop-rtl-review-evidence.zip",
+    "sha256": "b3e93b95e460b4cf84ed9cb800f8f51e3f4163012338215914b92876ec64cc21",
+    "preservation": "All four contents are committed as readable individual files; the redundant ZIP is not required."
+  },
+  "originalEvidence": [
+    {"path": "rtl-review-evidence/README.md", "bytes": 812, "sha256": "f187353e56b03d16514a96fb9973964576f34bfa14804d07a5ab6f74d3cb1fa2"},
+    {"path": "rtl-review-evidence/fuseoff-extracted.mjs", "bytes": 2516, "sha256": "ea3b2120e9698cb078b6d130dbea854479d44929747f1bd5db584ba3aec9a44e"},
+    {"path": "rtl-review-evidence/path-probe.json", "bytes": 708, "sha256": "0ee6ebcc4f5136835d7c6401951ccd1d5c79038e7abfb7cdd9f2821d8c90a372"},
+    {"path": "rtl-review-evidence/probe-paths.mjs", "bytes": 2307, "sha256": "35abed9b53820a78cbe70486005a23a9699071f478fe51b136030b6b3cc687f3"}
+  ],
+  "handoffValidation": {
+    "originalReportGitBlobMatched": true,
+    "syntheticProbeRerun": {
+      "environment": "linux; Node v22.16.0",
+      "fixtures": "Synthetic files in a temporary directory only; original saved evidence was not overwritten.",
+      "exitCode": 0,
+      "directOutside": {"exitCode": 22, "unchanged": true},
+      "symlinkWithinRoot": {"exitCode": 0, "outsideFileModified": true, "changedOffsets": [50]},
+      "result": "Matches the original saved probe outcome."
+    }
+  },
+  "notPerformed": [
+    "Windows PowerShell 5.1 execution",
+    "Windows junction end-to-end test",
+    "Real application install, update, uninstall or profile modification",
+    "GUI/tray integration execution on a clean Windows machine",
+    "Independent byte-level validation of the product release ZIP",
+    "Framework performance benchmarks",
+    "Legal or security certification"
+  ],
+  "referencePolicy": "R/W references are preserved in REPORT.he.md. Source-code links are pinned to the reviewed commit. Live metadata and external documentation are a review-time snapshot and should be revalidated before implementation decisions.",
+  "additionalDocuments": "Implementation plan, validation register and review notes are handoff recommendations and follow-up questions, not claims that fixes were implemented."
+}
