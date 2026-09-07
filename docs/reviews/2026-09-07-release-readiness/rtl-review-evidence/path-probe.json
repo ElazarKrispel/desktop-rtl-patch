@@ -1,0 +1,20 @@
+{
+  "repositoryCommit": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "source": "scripts/lib/asar-edit.mjs:doFuseOff (extracted function)",
+  "environment": "linux; Node v22.16.0; synthetic temporary data only",
+  "limitations": "This is not the full PowerShell pipeline and not a Windows junction end-to-end test.",
+  "directOutside": {
+    "exitCode": 22,
+    "unchanged": true
+  },
+  "symlinkWithinRoot": {
+    "exitCode": 0,
+    "physicalTargetOutsideRoot": true,
+    "outsideFileModified": true,
+    "changedOffsets": [
+      50
+    ],
+    "stdout": "fuseoff: asar-integrity disabled (1 byte @50, length 66 unchanged)"
+  },
+  "verdict": "Lexical root guard does not enforce physical path containment."
+}
