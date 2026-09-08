@@ -552,12 +552,15 @@ function Invoke-HerdrRtlInstall {
     $patchCurrent = ($state -and $state.patchVersion -eq $script:PatchVersion)
 
     if (-not $Force -and $current -eq $Source.Signature -and (Test-Path $copyExe) -and $patchCurrent) {
+        try {
+            $verified=Confirm-RtlActiveCopy -Source $Source
+            if (-not $state.payloadSha256 -or $verified.payloadSha256 -ine $state.payloadSha256) { throw '[VERIFY] Active Herdr binary differs from verified installed state.' }
+        } catch { Write-RtlManagementReceipt -Phase VerificationPending; throw }
         Write-RtlLog "Up to date ($app v$($Source.Version), patch $($script:PatchVersion))."
         Clear-RtlBlocked   # a clean up-to-date pass resets any consecutive-failure streak
         # Settings may have changed while the RTL build was open; the config is a plain
         # file outside the copy, so it can always be refreshed.
-        try { Sync-HerdrRtlConfig -Source $Source -Profile $Profile | Out-Null }
-        catch { Write-RtlLog "config sync error: $($_.Exception.Message)" }
+        Sync-HerdrRtlConfig -Source $Source -Profile $Profile | Out-Null
         # Re-assert the shortcuts. A shortcut can go missing without the install
         # changing at all (a cleanup tool, a profile sync, a stray delete), and
         # without this the only way back is a forced reinstall.
@@ -565,11 +568,10 @@ function Invoke-HerdrRtlInstall {
         # also holds legacy paths that are always "missing" and would rewrite them every pass.
         if (@(@($script:ShortcutStart, $script:ShortcutDesktop) | Where-Object { -not (Test-Path $_) })) {
             Write-RtlLog 'A shortcut is missing; recreating it.'
-            try { New-HerdrRtlShortcut -Profile $Profile }
-            catch { Write-RtlLog "shortcut refresh failed: $($_.Exception.Message)" }
+            New-HerdrRtlShortcut -Profile $Profile
         }
         Set-RtlStep 'done' 100
-        return
+        return (New-RtlOperationResult -Status AlreadyCurrent -Reason 'Active Herdr copy verified.')
     }
     Write-RtlLog "Install needed: $app v$($Source.Version) [$($Source.Type)] (was '$current')"
 
@@ -582,7 +584,7 @@ function Invoke-HerdrRtlInstall {
         Write-RtlLog "$app (RTL) is running; deferring the update until it closes."
         if ($Auto) { Show-RtlToast "$app update ready" "A newer $app (RTL) will install next time you close it." }
         Set-RtlStep 'deferred' 100
-        return
+        return (New-RtlOperationResult -Status Deferred -Reason 'Herdr is running; build has not been prepared.' -Prepared $false)
     }
 
     Set-RtlStep 'copy' 25 $true
@@ -593,13 +595,13 @@ function Invoke-HerdrRtlInstall {
 
     Set-RtlStep 'swap' 88
     Write-RtlLog 'Swapping staging into place (atomic)...'
-    Invoke-AtomicSwap
+    $verified=Invoke-RtlVerifiedSwap -Source $Source
     Set-RtlStep 'shortcut' 94
     New-HerdrRtlShortcut -Profile $Profile
     $bidi = Sync-HerdrRtlConfig -Source $Source -Profile $Profile
 
     # Post-swap smoke check on the live copy.
-    $live = Test-HerdrRtlBuild -Root $script:CopyRoot -Source $Source
+    $live = $staged
     Write-RtlState @{
         sourceSignature = $Source.Signature
         codexVersion    = $Source.Version
@@ -608,10 +610,13 @@ function Invoke-HerdrRtlInstall {
         asarSha256      = $null
     }
     Set-RtlConfigApplied
+    Write-RtlManagementReceipt -Phase Managed
+    Complete-RtlPreviousCopy
     Clear-RtlBlocked   # full success (built, verified, swapped) resets any failure streak
     Write-RtlLog "DONE: $app (RTL) $($live.Version) installed (bidi=$bidi)."
     Set-RtlStep 'done' 100
     if ($Auto) { Show-RtlToast "$app RTL updated" "Herdr (RTL) $($live.Version) is ready." }
+    return (New-RtlOperationResult -Status Succeeded -Reason 'Active Herdr copy verified and installed.')
 }
 
 function Get-HerdrFileSha256 {
