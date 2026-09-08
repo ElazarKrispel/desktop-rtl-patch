@@ -562,6 +562,7 @@ function Update-TrayStatus {
                 'Update'        { 'עדכון זמין' }
                 'PatchUpgrade'  { 'עדכון תיקון' }
                 'Repair'        { 'דרוש תיקון' }
+                'CleanupPending' { 'יש להשלים הסרה' }
                 'SourceMissing' { 'המקור הוסר' }
                 'Blocked'       { 'נכשל, דרוש עדכון לכלי' }
                 'Fresh'         { 'לא מותקן' }

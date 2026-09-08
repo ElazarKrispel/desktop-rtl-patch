@@ -25,6 +25,8 @@ if (Test-Path $script:_errPath) { . $script:_errPath }
 $script:_herdrPath = Join-Path $PSScriptRoot 'desktop-rtl-herdr.ps1'
 if (Test-Path $script:_herdrPath) { . $script:_herdrPath }
 
+. (Join-Path $PSScriptRoot 'desktop-rtl-managed.ps1')
+
 $script:PatchVersion  = '2.5.0'
 $script:SchemaVersion = 2
 # A structural update failure latches an auto-retry block only after this many CONSECUTIVE
@@ -1110,6 +1112,7 @@ function Test-RtlPackage {
     $required = @(
         'scripts\lib\desktop-rtl-lib.ps1',
         'scripts\lib\desktop-rtl-paths.ps1',
+        'scripts\lib\desktop-rtl-managed.ps1',
         'scripts\lib\asar-edit.mjs',
         'src\desktop-rtl-patch.js',
         'scripts\Watch-DesktopRtl.ps1'
@@ -1871,22 +1874,13 @@ function Get-CodexRtlStatus {
     $src = $null; try { $src = Resolve-RtlSource } catch {}
     $copyOk = Test-Path (Join-Path $script:CopyRoot $script:ActiveProfile.ExeRelPath)
     $state = Read-RtlState
-    # corrupt state file (exists but did not parse) -> back it up once.
-    if (-not $state -and (Test-Path $script:StateFile)) {
-        try {
-            $raw = Get-Content $script:StateFile -Raw -ErrorAction Stop
-            if ($raw -and $raw.Trim()) {
-                Move-Item -LiteralPath (Get-RtlSafePath -Path ($script:StateFile)) -Destination (Get-RtlSafePath -Path ("$($script:StateFile).bad")) -Force
-                Write-RtlLog 'Corrupt state.json backed up to state.json.bad.'
-            }
-        } catch {}
-    }
     $o = [ordered]@{
         State            = 'Fresh'
         CodexFound       = [bool]$src
         AvailableVersion = $(if ($src) { $src.Version } else { $null })
         InstalledVersion = $(if ($state) { $state.codexVersion } else { $null })
         CopyExists       = $copyOk
+        Managed          = (Test-RtlManagedArtifacts)
         Running          = (Test-CodexRtlRunning)
         BlockedError     = $null
     }
@@ -1895,7 +1889,8 @@ function Get-CodexRtlStatus {
     # uninstalled is SourceMissing (this beats a stale block - never surface an old fuse error
     # for an app that is gone); a copy without valid state needs Repair; a still-valid block on
     # the current source is Blocked; then the normal update/patch/uptodate ladder.
-    if ($state -and $state.schemaVersion -and ([int]$state.schemaVersion -gt $script:SchemaVersion)) { $o.State = 'ReinstallRequired' }
+    if (Test-RtlCleanupPending) { $o.State = 'CleanupPending' }
+    elseif ($state -and $state.schemaVersion -and ([int]$state.schemaVersion -gt $script:SchemaVersion)) { $o.State = 'ReinstallRequired' }
     elseif ($copyOk -and -not $src) { $o.State = 'SourceMissing' }
     elseif (-not $state) { $o.State = $(if ($copyOk) { 'Repair' } else { 'Fresh' }) }
     elseif (-not $copyOk) { $o.State = 'Repair' }
@@ -1916,6 +1911,7 @@ function Invoke-CodexRtlUpdate {
         $app = $p.DisplayName
         $copyExe  = Join-Path $script:CopyRoot $p.ExeRelPath
         $liveAsar = Join-Path $script:CopyRoot $p.AsarRelPath
+        if (Test-RtlCleanupPending) { throw '[CLEANUP] Finish the pending removal before installing or updating.' }
         Set-RtlStep 'preflight' 5
         # self-heal: recover from a crash mid-swap (CopyRoot gone, OldRoot present).
         if (-not (Test-Path $script:CopyRoot) -and (Test-Path $script:OldRoot)) {
@@ -1992,6 +1988,7 @@ function Invoke-CodexRtlUpdate {
             Set-RtlStep 'done' 100
             return
         }
+        Write-RtlManagementReceipt -Phase Managed
         Write-RtlLog "Update needed: $app v$($src.Version) [$($src.Type)] (was '$current')"
 
         # ---- copy mode (always): build to staging, then atomic-swap when closed ----
@@ -2347,6 +2344,7 @@ function Copy-RtlBin {
         @{ src = 'scripts\lib\desktop-rtl-lib.ps1'; dst = 'desktop-rtl-lib.ps1';   req = $true },
         @{ src = 'scripts\lib\desktop-rtl-paths.ps1'; dst = 'desktop-rtl-paths.ps1'; req = $true },
         @{ src = 'scripts\lib\desktop-rtl-errors.ps1'; dst = 'desktop-rtl-errors.ps1'; req = $false },
+        @{ src = 'scripts\lib\desktop-rtl-managed.ps1'; dst = 'desktop-rtl-managed.ps1'; req = $true },
         @{ src = 'scripts\lib\desktop-rtl-herdr.ps1'; dst = 'desktop-rtl-herdr.ps1'; req = $false },
         @{ src = 'scripts\lib\asar-edit.mjs';     dst = 'asar-edit.mjs';        req = $true },
         @{ src = 'src\desktop-rtl-patch.js';        dst = 'desktop-rtl-patch.js';   req = $true },
@@ -2484,17 +2482,11 @@ function Invoke-RtlAgentMigration {
 }
 
 # ---- installed-app detection -------------------------------------------------
-# Installed = the RTL COPY exe exists (the same signal Get-CodexRtlStatus uses). A
-# state file WITHOUT a copy exe is stale (a failed cleanup) and is logged, not counted.
+# Managed includes incomplete removals, even when the executable/source is gone.
 function Get-RtlInstalledApps {
-    # Side-effect free: reads the profiles directly instead of rebinding the active app,
-    # so enumerating never touches (or creates) any app's state folder.
     $ids = @()
     foreach ($id in @(Get-RtlAppIds)) {
-        $p = Get-RtlProfile $id
-        $copyExe = Join-Path $p.CopyRoot $p.ExeRelPath
-        if (Test-Path $copyExe) { $ids += $id }
-        elseif (Test-Path (Join-Path $p.StateDir 'state.json')) { Write-RtlAgentLog "stale state for '$id' (no copy exe at $copyExe); not counted." }
+        if (Test-RtlManagedArtifacts -Profile (Get-RtlProfile $id)) { $ids += $id }
     }
     return $ids
 }
@@ -2952,6 +2944,7 @@ function Invoke-CodexRtlUninstall {
         return $false
     }
     try {
+        Write-RtlManagementReceipt -Phase CleanupPending
         Stop-CodexRtlWatcher   # stop only THIS app's legacy watcher (path/-App scoped); never the agent tray
         foreach ($d in @($script:CopyRoot, $script:Staging, $script:OldRoot, $script:BinDir, "$($script:BinDir).staging", "$($script:BinDir).old")) {
             if ((Test-Path $d) -and -not (Remove-RtlPathRetry $d -Recurse)) { $uncertain = $true; $leftovers += $d }
@@ -2979,7 +2972,7 @@ function Invoke-CodexRtlUninstall {
         }
         # Keep config.json for every app: user chosen RTL preferences are valuable
         # settings, not an installation receipt or permission to auto-install.
-        foreach ($f in (@($script:StateFile, $script:ConfigAppliedMarker, $script:BlockedFile, $launcher) + $extraFiles)) {
+        foreach ($f in (@($script:ConfigAppliedMarker, $script:BlockedFile, $launcher) + $extraFiles)) {
             if ($f -and (Test-Path $f) -and -not (Remove-RtlPathRetry $f)) { $uncertain = $true; $leftovers += $f }
         }
         # Remove this app's LEGACY per-app Run value if it is still ours (the agent replaces it).
@@ -2989,6 +2982,18 @@ function Invoke-CodexRtlUninstall {
             if ($val -and (Test-RtlOwnedCommand $val)) { Remove-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue; Write-RtlLog "removed legacy Run value $legacy" }
         } catch {}
         if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-RtlSafeItem -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true; $leftovers += $script:LogsDir } }
+        # Keep version metadata and the cleanup intent until all owned resources are gone.
+        if (-not $uncertain -and (Test-Path -LiteralPath $script:StateFile)) {
+            if (-not (Remove-RtlPathRetry $script:StateFile)) { $uncertain = $true; $leftovers += $script:StateFile }
+        }
+        if ($uncertain) { Write-RtlManagementReceipt -Phase CleanupPending -Leftovers $leftovers }
+        else {
+            $receiptPath = Join-Path $script:StateDir 'management.json'
+            if (-not (Remove-RtlPathRetry $receiptPath)) {
+                $uncertain = $true; $leftovers += $receiptPath
+                Write-RtlManagementReceipt -Phase CleanupPending -Leftovers $leftovers
+            }
+        }
         Write-RtlLog "Per-app uninstall complete (app=$($script:ActiveProfile.Id), certain=$(-not $uncertain))."
     } finally { Exit-RtlLock }
     return [pscustomobject]@{ App = $script:ActiveProfile.Id; Certain = (-not $uncertain); Leftovers = $leftovers }
