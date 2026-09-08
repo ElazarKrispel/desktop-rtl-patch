@@ -1,0 +1,271 @@
+{
+  "PowerShell": "7.6.5",
+  "ScriptSHA256": "12189C6E063110901AB06708332558198A7EBCBCCDA47B93485A017A0EAC23E7",
+  "Isolation": "Synthetic bytes; mocked network, extraction and GUI/CLI launch; no real installer execution.",
+  "Cases": [
+    {
+      "Case": "checksum-unavailable",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] Could not download and verify the release. Nothing was extracted or installed. Please retry when the release asset and SHA256SUMS.txt are available. Synthetic checksum timeout",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "asset-unavailable",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] Could not download and verify the release. Nothing was extracted or installed. Please retry when the release asset and SHA256SUMS.txt are available. Synthetic asset timeout",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 1,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "empty-checksum",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "wrong-hash",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "wrong-filename",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "malformed-checksum",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "duplicate-entry",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid-byte-content",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid-binary-marker",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid-extra-entry",
+      "Mode": "gui",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "checksum-unavailable",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] Could not download and verify the release. Nothing was extracted or installed. Please retry when the release asset and SHA256SUMS.txt are available. Synthetic checksum timeout",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "asset-unavailable",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] Could not download and verify the release. Nothing was extracted or installed. Please retry when the release asset and SHA256SUMS.txt are available. Synthetic asset timeout",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 1,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "empty-checksum",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "wrong-hash",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "wrong-filename",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "malformed-checksum",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "duplicate-entry",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": "[INTEGRITY] Expected exactly one valid SHA-256 checksum for desktop-rtl-patch-2.5.0.zip. Nothing was extracted or installed.",
+      "Calls": {
+        "Extract": 0,
+        "Launch": 0,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid-byte-content",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid-binary-marker",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    },
+    {
+      "Case": "valid-extra-entry",
+      "Mode": "cli",
+      "Passed": true,
+      "Error": null,
+      "Calls": {
+        "Extract": 1,
+        "Launch": 1,
+        "Download": 2,
+        "Fallback": 0
+      }
+    }
+  ]
+}

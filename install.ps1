@@ -20,36 +20,40 @@ $tmp = Join-Path $env:TEMP ('codexrtl-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $zip = Join-Path $tmp 'src.zip'
 
-# We prefer a CHECKSUMMED release asset (a zip we upload alongside a SHA256SUMS.txt),
-# verify its SHA-256 before extracting, and abort on any mismatch. Older releases that
-# have no asset fall back to GitHub's auto source archive (integrity not verifiable).
+# Require the release asset and its SHA256SUMS.txt before extracting or running it.
+# Missing assets, network errors and invalid checksums all stop this bootstrap.
 # NOTE: the asset name carries the bare version while the tag has the 'v' prefix.
-$assetZip = "https://github.com/$Repo/releases/download/$Tag/desktop-rtl-patch-$($Tag.TrimStart('v')).zip"
+$assetName = "desktop-rtl-patch-$($Tag.TrimStart('v')).zip"
+$assetZip = "https://github.com/$Repo/releases/download/$Tag/$assetName"
 $sumsUrl  = "https://github.com/$Repo/releases/download/$Tag/SHA256SUMS.txt"
-$srcZip   = "https://github.com/$Repo/archive/refs/tags/$Tag.zip"
 
 Write-Host "Downloading Desktop RTL $Tag ..." -ForegroundColor Cyan
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-$verified = $false
 try {
     Invoke-WebRequest -Uri $assetZip -OutFile $zip -UseBasicParsing
     # GitHub serves the .txt asset as octet-stream, so .Content arrives as byte[].
     $sums = (Invoke-WebRequest -Uri $sumsUrl -UseBasicParsing).Content
     if ($sums -is [byte[]]) { $sums = [Text.Encoding]::ASCII.GetString($sums) }
     $sums = [string]$sums
-    $have = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
-    if ($sums -and ($sums.ToLower() -match [regex]::Escape($have))) {
-        $verified = $true
-        Write-Host "Integrity verified (SHA-256 matches SHA256SUMS.txt)." -ForegroundColor Green
-    } else {
+    # Bind one complete checksum record to this exact asset filename. A digest
+    # belonging to another file, a substring or duplicate records is not evidence.
+    $pattern = '^(?<hash>[a-fA-F0-9]{64})[ \t]+\*?' + [regex]::Escape($assetName) + '$'
+    $records = @($sums -split '\r?\n' | ForEach-Object {
+        $record = [regex]::Match($_, $pattern)
+        if ($record.Success) { $record }
+    })
+    if ($records.Count -ne 1) {
+        throw "[INTEGRITY] Expected exactly one valid SHA-256 checksum for $assetName. Nothing was extracted or installed."
+    }
+    $have = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+    if ($have -ine $records[0].Groups['hash'].Value) {
         throw "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page."
     }
+    Write-Host "Integrity verified (SHA-256 matches SHA256SUMS.txt)." -ForegroundColor Green
 } catch {
     if ($_.Exception.Message -match '^\[INTEGRITY\]') { throw }
-    # No checksummed asset for this tag; fall back to the source archive.
-    Write-Host "WARNING: no checksummed release asset found; falling back to the source archive (integrity not verified)." -ForegroundColor Yellow
-    Invoke-WebRequest -Uri $srcZip -OutFile $zip -UseBasicParsing
+    throw "[INTEGRITY] Could not download and verify the release. Nothing was extracted or installed. Please retry when the release asset and SHA256SUMS.txt are available. $($_.Exception.Message)"
 }
 
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
