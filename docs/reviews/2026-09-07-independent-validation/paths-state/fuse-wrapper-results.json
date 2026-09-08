@@ -1,0 +1,14 @@
+{
+    "scope":  "Exact AST production PowerShell fuse wrapper -\u003e exact Invoke-RtlNodeCli -\u003e full production Node editor; only synthetic binary and junction",
+    "environment":  "5.1.26100.9168",
+    "outsideFixtureChangedOffsets":  [
+                                         50
+                                     ],
+    "logs":  [
+                 "fusestate: fuse: asar-integrity=ENABLED (count=8) (exit 20)",
+                 "asar-integrity fuse is ENABLED in the copy; flipping it OFF (copy only).",
+                 "fuseoff: fuseoff: asar-integrity disabled (1 byte @50, length 66 unchanged) (exit 0)",
+                 "fusestate (post-flip): fuse: asar-integrity=disabled (count=8) (exit 0)"
+             ],
+    "limitations":  "Not robocopy/staging install E2E; no real app binary, TOCTOU or elevated permissions"
+}

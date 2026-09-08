@@ -1,0 +1,84 @@
+﻿{
+    "sourceCommit":  "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+    "sourceSha256":  "863933955B0A29462925040950C9B7111AA57181B70A7A966182885C10BB0549",
+    "os":  "Microsoft Windows NT 10.0.26200.0",
+    "powershell":  "5.1.26100.9168",
+    "runDate":  "2026-09-07T16:56:42.2464556Z",
+    "fixtureRootLeaf":  "fixture-5b80e379b10a4ff6b0bbf6d565bee130",
+    "safety":  "No product library dot-source, real registry, shell links, named event, app launch/stop or original profile access. Files remain in unique local fixture directory.",
+    "results":  [
+                    {
+                        "id":  "F02",
+                        "scenario":  "Real Windows file lock inside synthetic copy; real recursive deletion",
+                        "certain":  false,
+                        "leftoverCount":  1,
+                        "exeExists":  false,
+                        "lockedFileExists":  true,
+                        "stateExists":  false,
+                        "configExists":  false,
+                        "shortcutExists":  false,
+                        "installedBefore":  [
+                                                "fixture"
+                                            ],
+                        "installedAfter":  [
+
+                                           ],
+                        "expected":  "Partial must preserve a discoverable management record",
+                        "limitations":  "Function extracted via AST; registry, watchers, locks and log sinks stubbed. Windows non-exe file lock and filesystem removal are real; UI restart not run."
+                    },
+                    {
+                        "id":  "F03",
+                        "scenario":  "Default prebuilt uninstall; synthetic private user data",
+                        "certain":  true,
+                        "customConfigExists":  false,
+                        "sessionExists":  false,
+                        "privateStateExists":  false,
+                        "expected":  "Default software removal preserves valuable private data",
+                        "limitations":  "Actual synthetic file deletion through extracted uninstall; no Herdr process, upstream binary or original profile involved."
+                    },
+                    {
+                        "id":  "F04",
+                        "scenario":  "Lock acquisition returns false",
+                        "outputCount":  0,
+                        "threw":  false,
+                        "expected":  "Explicit Busy result, without downstream success",
+                        "limitations":  "Lock boundary is stubbed. Underlying OS lock contention and GUI rendering not run."
+                    },
+                    {
+                        "id":  "N03",
+                        "scenario":  "Valid current block; source exists; missing state and exe",
+                        "state":  "Fresh",
+                        "blockedError":  null,
+                        "expected":  "Installation state may be Fresh but valid update block must remain visible",
+                        "limitations":  "Extracted status, source/state/block boundaries stubbed; UI analyzed statically."
+                    },
+                    {
+                        "id":  "N01",
+                        "scenario":  "Fake CLSID with owned LocalServer32 and foreign sibling/value",
+                        "deleteCount":  1,
+                        "deletions":  [
+                                          {
+                                              "parentDeleted":  true,
+                                              "recursive":  true,
+                                              "unownedSiblingWouldBeDeleted":  true
+                                          }
+                                      ],
+                        "leftovers":  [
+
+                                      ],
+                        "expected":  "Owned command does not authorize deletion of foreign siblings",
+                        "limitations":  "Registry commands/provider calls fully replaced with in-memory stubs. Proves requested delete granularity, not real registry behavior or real foreign entry prevalence."
+                    },
+                    {
+                        "id":  "N02",
+                        "scenario":  "Warm staging verifies; live ASAR verify throws; next Auto poll",
+                        "firstPassDone":  true,
+                        "stateWritten":  true,
+                        "recordedPayloadHash":  null,
+                        "firstPassVerifyCalls":  2,
+                        "nextPassVerifyCalls":  0,
+                        "expected":  "Failed live verification remains unhealthy/pending and must be retried",
+                        "limitations":  "Extracted full update function with filesystem fixtures, no-op atomic swap and system boundaries; verify failure injected. No actual ASAR corruption or process restart."
+                    }
+                ]
+}

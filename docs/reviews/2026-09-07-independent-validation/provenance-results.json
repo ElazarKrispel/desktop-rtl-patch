@@ -1,0 +1,52 @@
+{
+  "sourceCommit": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "reviewCommit": "3c48cc43514d70137706fa257902008822dc6a8e",
+  "originMain": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "workingBranch": "codex/independent-release-validation-2026-09-07",
+  "productDiffFromBaseline": [],
+  "reviewFiles": [
+    "docs/reviews/2026-09-07-release-readiness/IMPLEMENTATION-PLAN.he.md",
+    "docs/reviews/2026-09-07-release-readiness/PROVENANCE.json",
+    "docs/reviews/2026-09-07-release-readiness/README.md",
+    "docs/reviews/2026-09-07-release-readiness/REPORT.he.md",
+    "docs/reviews/2026-09-07-release-readiness/REVIEW-NOTES.he.md",
+    "docs/reviews/2026-09-07-release-readiness/VALIDATION-REGISTER.he.md",
+    "docs/reviews/2026-09-07-release-readiness/rtl-review-evidence/README.md",
+    "docs/reviews/2026-09-07-release-readiness/rtl-review-evidence/fuseoff-extracted.mjs",
+    "docs/reviews/2026-09-07-release-readiness/rtl-review-evidence/path-probe.json",
+    "docs/reviews/2026-09-07-release-readiness/rtl-review-evidence/probe-paths.mjs"
+  ],
+  "preservedOriginalBlobs": [
+    {
+      "path": "REPORT.he.md",
+      "bytes": 44590,
+      "sha256": "2703a6486baa54093ea766346700c45c0bf7825a4b89e7f3e01ac303063995f5",
+      "recordedSha256Matches": true
+    },
+    {
+      "path": "rtl-review-evidence/README.md",
+      "bytes": 812,
+      "sha256": "f187353e56b03d16514a96fb9973964576f34bfa14804d07a5ab6f74d3cb1fa2",
+      "recordedSha256Matches": true
+    },
+    {
+      "path": "rtl-review-evidence/fuseoff-extracted.mjs",
+      "bytes": 2516,
+      "sha256": "ea3b2120e9698cb078b6d130dbea854479d44929747f1bd5db584ba3aec9a44e",
+      "recordedSha256Matches": true
+    },
+    {
+      "path": "rtl-review-evidence/path-probe.json",
+      "bytes": 708,
+      "sha256": "0ee6ebcc4f5136835d7c6401951ccd1d5c79038e7abfb7cdd9f2821d8c90a372",
+      "recordedSha256Matches": true
+    },
+    {
+      "path": "rtl-review-evidence/probe-paths.mjs",
+      "bytes": 2307,
+      "sha256": "35abed9b53820a78cbe70486005a23a9699071f478fe51b136030b6b3cc687f3",
+      "recordedSha256Matches": true
+    }
+  ],
+  "note": "Hashes computed on Git blobs; Windows checkout CRLF conversion must not be mistaken for original evidence changes."
+}
