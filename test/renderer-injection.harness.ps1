@@ -407,7 +407,7 @@ try {
     Assert-True (Test-Path $script:ShortcutStart) 'herdr shortcut save is recorded in the fixture'
     $shellLink = (New-Object -ComObject WScript.Shell).CreateShortcut($script:ShortcutStart)
     Assert-True ($shellLink.TargetPath -like '*\cmd.exe') 'herdr shortcut runs the launcher through cmd.exe'
-    Assert-True ($shellLink.Arguments -match '(?i)^/c "') 'herdr shortcut passes /c to the shell'
+    Assert-True ($shellLink.Arguments -match '(?i)^/d /c "') 'herdr shortcut disables AutoRun and passes /c to the shell'
     Assert-True ($shellLink.Arguments -match [regex]::Escape('Herdr-RTL.cmd')) 'herdr shortcut points at the launcher'
     Assert-True (-not ($shellLink.TargetPath -like '*wt.exe')) 'herdr shortcut never hands a .cmd to Windows Terminal'
     # A shortcut window that starts inside the copy pins that folder for as long

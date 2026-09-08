@@ -889,6 +889,13 @@ function Start-RtlCopyApp {
     $p = $script:ActiveProfile
     $exe = Join-Path $script:CopyRoot $p.ExeRelPath
     if (-not (Test-Path $exe)) { return $false }
+    if ($p.RendererMode -eq 'prebuilt') {
+        # Herdr needs a terminal and the same private XDG environment as its
+        # shortcut. Running its exe directly would fall back to the original data.
+        $plan = Get-HerdrRtlLaunchPlan -Profile $p
+        Start-Process -FilePath $plan.FilePath -ArgumentList $plan.Arguments -WorkingDirectory $plan.WorkingDirectory -ErrorAction Stop
+        return $true
+    }
     $saveRun = $env:ELECTRON_RUN_AS_NODE; $saveAsar = $env:ELECTRON_NO_ASAR
     Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
     Remove-Item Env:ELECTRON_NO_ASAR -ErrorAction SilentlyContinue
@@ -2959,21 +2966,20 @@ function Invoke-CodexRtlUninstall {
         # and a plain uninstall KEEPS StateDir (for the logs), so it has to be deleted here or
         # it is orphaned. Listed explicitly rather than relying on -PurgeLogs.
         $launcher = if ($script:ActiveProfile.LaunchScript) { Join-Path $script:StateDir $script:ActiveProfile.LaunchScript } else { $null }
-        # Prebuilt targets generate their own launcher and keep a private data tree
-        # (their own config, session and sockets) beside it. Both are entirely ours, so
-        # a clean uninstall takes them with it. The official install is never touched.
+        # Private config/session/state are user data, even though this tool created
+        # their directories. A normal uninstall retains them for a future reinstall.
         $extraFiles = @()
         $extraDirs = @()
         if ($script:ActiveProfile.RendererMode -eq 'prebuilt') {
             $extraFiles += (Join-Path $script:StateDir 'Herdr-RTL.cmd')
-            $extraDirs += (Join-Path $script:StateDir 'data')
-            $extraDirs += (Join-Path $script:StateDir 'state')
             $extraDirs += (Join-Path $script:StateDir 'artifact.work')
         }
         foreach ($d in $extraDirs) {
             if ((Test-Path $d) -and -not (Remove-RtlPathRetry $d -Recurse)) { $uncertain = $true; $leftovers += $d }
         }
-        foreach ($f in (@($script:StateFile, $script:ConfigFile, $script:ConfigAppliedMarker, $script:BlockedFile, $launcher) + $extraFiles)) {
+        # Keep config.json for every app: user chosen RTL preferences are valuable
+        # settings, not an installation receipt or permission to auto-install.
+        foreach ($f in (@($script:StateFile, $script:ConfigAppliedMarker, $script:BlockedFile, $launcher) + $extraFiles)) {
             if ($f -and (Test-Path $f) -and -not (Remove-RtlPathRetry $f)) { $uncertain = $true; $leftovers += $f }
         }
         # Remove this app's LEGACY per-app Run value if it is still ours (the agent replaces it).

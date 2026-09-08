@@ -384,8 +384,9 @@ function Start-Install {
 # --- Background uninstall ----------------------------------------------------
 function Start-Uninstall {
     $appName = $script:ActiveProfile.DisplayName
+    $dataNotice = if ($script:ActiveProfile.RendererMode -eq 'prebuilt') { 'הנתונים הפרטיים של עותק ה-RTL והגדרות ה-RTL יישמרו להתקנה מחדש.' } else { 'נתוני האפליקציה והגדרות ה-RTL יישמרו להתקנה מחדש.' }
     $r = [System.Windows.Forms.MessageBox]::Show(
-        "להסיר את $appName (RTL)? יוסרו העותק, הקיצורים, רישומי המערכת והעדכון האוטומטי. ה-$appName המקורי לא ייפגע. נתוני ההתחברות והמטמון (המשותפים עם $appName המקורי) וקובצי הלוג יישמרו.",
+        "להסיר את $appName (RTL)? יוסרו התוכנה המותאמת, הקיצורים והרישומים שלה. ה-$appName המקורי לא ייפגע. $dataNotice קובצי הלוג יישמרו. סוכן הרקע יישאר אם הוא דרוש לאפליקציות אחרות.",
         'Desktop RTL', 'YesNo', 'Question')
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     # Only after the user confirms the uninstall do we offer to close a running copy - so

@@ -45,3 +45,9 @@ Never reuse production event names, user profiles or existing temporary fixtures
 The browser example `bidi-harness.html` is a manual demonstration and is not
 automated renderer DOM coverage. A passing injection test does not prove streaming,
 editing, clipboard behavior, or runtime compatibility with an application release.
+
+`herdr-lifecycle.harness.ps1` checks private data and per-app RTL preference
+retention, the uninstall CLI operation tail with `PurgeLogs`, reuse of retained
+TOML, and the shared Herdr launch request used by the shortcut and manager.
+Launch is captured rather than executed. UTF-8 launcher bytes include a Hebrew
+path with spaces; this is not a terminal or shell end-to-end test.

@@ -134,9 +134,11 @@ Changes apply the next time you open that app.
 * In the installer window, pick the app and click **"הסר התקנה"** (Remove).
 * Or run `Uninstall-DesktopRtl.ps1` (see [Advanced](#advanced)).
 
-It removes that app's patched copy, shortcuts, watcher and state; the other apps are untouched.
-The log folder is kept for diagnostics (add `-PurgeLogs` to delete it too). The original apps are
-unaffected.
+It removes that app's patched copy, shortcuts and installation records; the other apps are
+untouched. Application data and that app's RTL preferences are kept for reinstall, including
+Herdr's private configuration and sessions. The shared background agent remains while other
+apps need it. The log folder is kept for diagnostics; `-PurgeLogs` deletes only that log folder,
+not application data or preferences. The original apps are unaffected.
 
 ## Advanced
 
