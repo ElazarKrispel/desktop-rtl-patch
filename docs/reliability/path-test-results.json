@@ -1,0 +1,68 @@
+{
+  "baseline": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "date": "2026-09-08",
+  "powershell": {
+    "mode": "AFTER",
+    "powershell": "5.1.26100.9168",
+    "checks": [
+      "full PowerShell -> Node fuse pipeline rejects junction",
+      "directory injection rejects junction before payload copy",
+      "not-yet-created descendants reject junction ancestor",
+      "selected root itself is a junction",
+      "recursive cleanup rejects child junction before deletion",
+      "recursive copy rejects destination child junction",
+      "mirror rejects destination child junction before robocopy",
+      "rename rejects nested junction before moving tree",
+      "native metadata guard rejects hardlinked state file",
+      "state writer rejects redirected destination",
+      "copy-root lookalike is not authorized",
+      "normal directory inject and verify pass"
+    ],
+    "fixture": "<unique temporary fixture, retained>",
+    "limitation": "Synthetic files only; no production install, Registry, shortcuts, events, or concurrent rename test. Fixture retained."
+  },
+  "node": {
+    "mode": "AFTER: regression passed",
+    "platform": "win32",
+    "node": "v24.14.0",
+    "fixture": "<unique temporary fixture, retained>",
+    "cases": [
+      {
+        "name": "direct outside rejected",
+        "exit": 22,
+        "unchanged": true
+      },
+      {
+        "name": "ordinary inside changes one byte",
+        "exit": 0,
+        "unchanged": false
+      },
+      {
+        "name": "junction ancestor",
+        "exit": 22,
+        "unchanged": true
+      },
+      {
+        "name": "hardlinked binary",
+        "exit": 22,
+        "unchanged": true
+      },
+      {
+        "name": "ASAR injection through junction",
+        "exit": 1,
+        "unchanged": true
+      },
+      {
+        "name": "backup destination under junction",
+        "exit": 1,
+        "unchanged": true
+      },
+      {
+        "name": "ordinary ASAR succeeds without touching hostile legacy temp",
+        "exit": 0,
+        "unchanged": false
+      }
+    ],
+    "limitations": "Synthetic full Node CLI. No installer run or concurrent path replacement. Fixture retained."
+  }
+}

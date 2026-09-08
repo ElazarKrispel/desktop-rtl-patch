@@ -115,6 +115,8 @@ function doFuseOff(binPath, root) {
   const underRoot = abs.toLowerCase() === rootAbs.toLowerCase() ||
     abs.toLowerCase().startsWith(rootAbs.toLowerCase() + path.sep);
   if (!underRoot) { console.error("fuseoff refused: " + abs + " is not under --root " + rootAbs); process.exit(22); }
+  try { assertSafeMutationPath(abs); }
+  catch (e) { console.error(e.message); process.exit(22); }
   let buf;
   try { buf = fs.readFileSync(abs); }
   catch (e) { console.error("cannot read binary: " + (e && e.message)); process.exit(21); }
@@ -130,7 +132,13 @@ function doFuseOff(binPath, root) {
   if (cur === "0") { console.log("fuseoff: asar-integrity already disabled (no change)"); process.exit(0); }
   if (cur !== "1") { console.error("fuseoff: fuse byte is '" + cur + "', not '0'/'1'; refusing"); process.exit(23); }
   const fd = fs.openSync(abs, "r+");
-  try { fs.writeSync(fd, Buffer.from("0", "latin1"), 0, 1, pos); } finally { fs.closeSync(fd); }
+  try {
+    // Check the opened file too: a hardlink must never turn an in-place fuse edit
+    // into an edit of another path. Ancestor checks do not eliminate rename races.
+    assertSafeMutationPath(abs);
+    if (fs.fstatSync(fd).nlink !== 1) throw Error('[SAFETY] hardlinked fuse binary');
+    fs.writeSync(fd, Buffer.from("0", "latin1"), 0, 1, pos);
+  } finally { fs.closeSync(fd); }
   const after = fs.readFileSync(abs);
   const onlyThatByteChanged = after.length === buf.length && after[pos] === 0x30 &&
     Buffer.compare(after.subarray(0, pos), buf.subarray(0, pos)) === 0 &&
@@ -379,12 +387,15 @@ function buildHeader(header) {
 // Atomic write: build the full new image in a sibling .tmp, fsync, then rename over
 // the target so a crash mid-write can never leave a torn asar in staging.
 function writeAsarAtomic(asarPath, head, dataSection, appended, raw, bakArg) {
+  assertSafeMutationPath(asarPath);
   if (bakArg !== "--no-bak") {
     const bakPath = bakArg && bakArg.length ? bakArg : asarPath + ".bak";
-    if (!fs.existsSync(bakPath)) fs.writeFileSync(bakPath, raw);
+    assertSafeMutationPath(bakPath);
+    if (!fs.existsSync(bakPath)) fs.writeFileSync(bakPath, raw, {flag: 'wx'});
   }
-  const tmp = asarPath + ".tmp";
-  const fd = fs.openSync(tmp, "w");
+  const tmp = asarPath + '.' + crypto.randomBytes(12).toString('hex') + '.tmp';
+  assertSafeMutationPath(tmp);
+  const fd = fs.openSync(tmp, "wx");
   try {
     fs.writeSync(fd, head);
     fs.writeSync(fd, dataSection);
@@ -393,7 +404,27 @@ function writeAsarAtomic(asarPath, head, dataSection, appended, raw, bakArg) {
   } finally {
     fs.closeSync(fd);
   }
+  assertSafeMutationPath(asarPath);
+  assertSafeMutationPath(tmp);
   fs.renameSync(tmp, asarPath);
+}
+
+// Reject links in every existing component, including the selected root itself.
+// lstat observes dangling links; walking up also covers not-yet-created children.
+// This is fail-closed preflight, not protection from a same-user rename race.
+function assertSafeMutationPath(target) {
+  const absolute = path.resolve(target);
+  if (process.platform === 'win32' && (absolute.startsWith('\\\\') || absolute.slice(2).includes(':'))) {
+    throw Error('[SAFETY] device, network or alternate-stream mutation path');
+  }
+  for (let cursor = absolute; ; cursor = path.dirname(cursor)) {
+    let stat;
+    try { stat = fs.lstatSync(cursor); }
+    catch (e) { if (e.code !== 'ENOENT') throw e; }
+    if (stat?.isSymbolicLink()) throw Error('[SAFETY] reparse/link mutation path: ' + cursor);
+    if (stat?.isFile() && stat.nlink !== 1) throw Error('[SAFETY] hardlinked mutation path: ' + cursor);
+    if (path.dirname(cursor) === cursor) break;
+  }
 }
 
 /* -------------------------------- verify --------------------------------- */
