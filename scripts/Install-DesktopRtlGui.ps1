@@ -276,6 +276,12 @@ function Update-Buttons {
     foreach ($b in @($btnDiag, $btnCopyLog, $btnBundle, $btnOpenLogs, $btnClose)) { $b.Enabled = $true }
     $btnPrimary.Enabled = $true; $btnSecondary.Visible = $false; $btnUninstall.Visible = $false
     $st = $null; try { $st = Get-CodexRtlStatus } catch {}
+    if ($st -and $st.State -eq 'CleanupPending') {
+        $status.Text = 'נותרו שאריות התקנה. יש להשלים את ההסרה לפני התקנה או עדכון. הנתונים האישיים יישמרו.'
+        $btnPrimary.Text = 'בדוק שוב'; $btnPrimary.Tag = 'recheck'
+        $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
+        return
+    }
     if (-not $st -or -not $st.CodexFound) {
         if ($st -and $st.CopyExists) {
             # The original was uninstalled but our RTL copy is still here (SourceMissing).
