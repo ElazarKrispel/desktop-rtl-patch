@@ -37,7 +37,7 @@ if (-not $SelfTest -and -not $NoRelaunch) {
         $wscript     = Join-Path $env:WINDIR 'System32\wscript.exe'
         function Test-RtlBinFiles([string]$d) {
             Assert-RtlSafePath -Path $d -Tree
-            foreach ($f in @('desktop-rtl-lib.ps1', 'desktop-rtl-paths.ps1', 'desktop-rtl-managed.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1', 'DesktopRtlTray.ps1', 'Desktop-RTL-Tray.vbs', 'generation.txt')) {
+            foreach ($f in @('desktop-rtl-lib.ps1', 'desktop-rtl-paths.ps1', 'desktop-rtl-managed.ps1', 'desktop-rtl-results.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1', 'DesktopRtlTray.ps1', 'Desktop-RTL-Tray.vbs', 'generation.txt')) {
                 if (-not (Test-Path (Join-Path $d $f))) { return $false }
             }
             return $true
