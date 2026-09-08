@@ -19,6 +19,15 @@ param([switch]$NoRelaunch, [switch]$SelfTest)
 # that parses but crashes at startup recoverable, even on a fully-consolidated box.
 if (-not $SelfTest -and -not $NoRelaunch) {
     try {
+        $ErrorActionPreference = 'Stop'
+        # Load only the filesystem guard here. Loading the engine would bind
+        # runtime globals to a generation that may be replaced below.
+        $pathGuard = $null
+        foreach ($candidate in @((Join-Path $PSScriptRoot 'desktop-rtl-paths.ps1'), (Join-Path $PSScriptRoot 'lib\desktop-rtl-paths.ps1'))) {
+            if (Test-Path -LiteralPath $candidate) { $pathGuard = $candidate; break }
+        }
+        if (-not $pathGuard) { throw '[PACKAGE] Startup filesystem guard is missing.' }
+        . $pathGuard
         $ah          = Join-Path $env:LOCALAPPDATA 'DesktopRtlPatch'
         $binDir      = Join-Path $ah 'bin'
         $binStaging  = "$binDir.staging"
@@ -27,20 +36,26 @@ if (-not $SelfTest -and -not $NoRelaunch) {
         $readyFile   = Join-Path $ah 'ready.json'
         $wscript     = Join-Path $env:WINDIR 'System32\wscript.exe'
         function Test-RtlBinFiles([string]$d) {
-            foreach ($f in @('desktop-rtl-lib.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1')) {
+            Assert-RtlSafePath -Path $d -Tree
+            foreach ($f in @('desktop-rtl-lib.ps1', 'desktop-rtl-paths.ps1', 'desktop-rtl-managed.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1', 'DesktopRtlTray.ps1', 'Desktop-RTL-Tray.vbs', 'generation.txt')) {
                 if (-not (Test-Path (Join-Path $d $f))) { return $false }
             }
             return $true
         }
-        if ((Test-Path $marker) -and (Test-Path $binStaging) -and (Test-RtlBinFiles $binStaging)) {
-            if (Test-Path $binOld) { Remove-Item -LiteralPath $binOld -Recurse -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $binDir) { Rename-Item -LiteralPath $binDir -NewName ([IO.Path]::GetFileName($binOld)) -Force }
-            Rename-Item -LiteralPath $binStaging -NewName ([IO.Path]::GetFileName($binDir)) -Force
-            Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+        if ((Test-Path $marker) -and (Test-Path $binStaging)) {
+            if (-not (Test-RtlBinFiles $binStaging)) { throw '[PACKAGE] Staged runtime is incomplete; self-update was not applied.' }
+            if (-not (Get-Content -LiteralPath (Join-Path $binStaging 'generation.txt') -Raw).Trim()) { throw '[PACKAGE] Staged runtime has no readiness generation.' }
+            # Inspect every candidate before the first deletion or rename. A
+            # redirected rollback/ready path must not produce a partial swap.
+            foreach ($target in @($binDir,$binStaging,$binOld,"$binDir.failed",$marker,$readyFile)) { Assert-RtlSafePath -Path $target -Tree }
+            if (Test-Path $binOld) { Remove-RtlSafeItem -LiteralPath $binOld -Recurse -Force -ErrorAction Stop }
+            if (Test-Path $binDir) { Rename-RtlSafeItem -LiteralPath $binDir -NewName ([IO.Path]::GetFileName($binOld)) -Force }
+            Rename-RtlSafeItem -LiteralPath $binStaging -NewName ([IO.Path]::GetFileName($binDir)) -Force
+            Remove-RtlSafeItem -LiteralPath $marker -Force -ErrorAction Stop
             $gen = $null
             $genFile = Join-Path $binDir 'generation.txt'
             if (Test-Path $genFile) { try { $gen = (Get-Content $genFile -Raw).Trim() } catch {} }
-            if (Test-Path $readyFile) { try { Remove-Item -LiteralPath $readyFile -Force } catch {} }
+            if (Test-Path $readyFile) { Remove-RtlSafeItem -LiteralPath $readyFile -Force -ErrorAction Stop }
             $freshVbs = Join-Path $binDir 'Desktop-RTL-Tray.vbs'
             if (Test-Path $freshVbs) {
                 Start-Process -FilePath $wscript -ArgumentList "`"$freshVbs`""
@@ -55,19 +70,22 @@ if (-not $SelfTest -and -not $NoRelaunch) {
                     Start-Sleep -Milliseconds 400
                 }
                 if ($ok) {
-                    if (Test-Path $binOld) { Remove-Item -LiteralPath $binOld -Recurse -Force -ErrorAction SilentlyContinue }
+                    if (Test-Path $binOld) { Remove-RtlSafeItem -LiteralPath $binOld -Recurse -Force -ErrorAction Stop }
                 } elseif (Test-Path $binOld) {
                     $failed = "$binDir.failed"
-                    if (Test-Path $failed) { Remove-Item -LiteralPath $failed -Recurse -Force -ErrorAction SilentlyContinue }
-                    if (Test-Path $binDir) { Rename-Item -LiteralPath $binDir -NewName ([IO.Path]::GetFileName($failed)) -Force }
-                    Rename-Item -LiteralPath $binOld -NewName ([IO.Path]::GetFileName($binDir)) -Force
+                    if (Test-Path $failed) { Remove-RtlSafeItem -LiteralPath $failed -Recurse -Force -ErrorAction Stop }
+                    if (Test-Path $binDir) { Rename-RtlSafeItem -LiteralPath $binDir -NewName ([IO.Path]::GetFileName($failed)) -Force }
+                    Rename-RtlSafeItem -LiteralPath $binOld -NewName ([IO.Path]::GetFileName($binDir)) -Force
                     $oldVbs = Join-Path $binDir 'Desktop-RTL-Tray.vbs'
                     if (Test-Path $oldVbs) { Start-Process -FilePath $wscript -ArgumentList "`"$oldVbs`"" }
                 }
                 return
             }
         }
-    } catch {}
+    } catch {
+        Write-Warning ("Desktop RTL startup self-update stopped: " + $_.Exception.Message)
+        return
+    }
 }
 
 # --- Relaunch under Windows PowerShell 5.1 + STA if needed -------------------
@@ -330,7 +348,7 @@ function Build-Menu {
     [void]$menu.Items.Add($script:miInstallUpd)
     $miLogs = New-Object System.Windows.Forms.ToolStripMenuItem 'פתח תיקיית לוגים'
     $miLogs.add_Click({
-            if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+            if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path $script:AgentHome) | Out-Null }
             Start-Process -FilePath 'explorer.exe' -ArgumentList $script:AgentHome
         })
     [void]$menu.Items.Add($miLogs)

@@ -558,7 +558,7 @@ $btnBundle.Add_Click({
     })
 
 $btnOpenLogs.Add_Click({
-        if (-not (Test-Path $script:LogsDir)) { New-Item -ItemType Directory -Force -Path $script:LogsDir | Out-Null }
+        if (-not (Test-Path $script:LogsDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path $script:LogsDir) | Out-Null }
         Start-Process -FilePath 'explorer.exe' -ArgumentList $script:LogsDir
     })
 
