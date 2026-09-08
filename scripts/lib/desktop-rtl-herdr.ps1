@@ -475,10 +475,9 @@ function Install-HerdrRtlIcon {
     }
 }
 
-# Create the "Herdr (RTL)" shortcuts. Windows Terminal hosts the session when it is
-# available (correct Unicode and font handling); otherwise the .cmd runs in the
-# classic console, which still works.
-function New-HerdrRtlShortcut {
+# One launch description for the shortcut and all manager Open actions. The CMD
+# sets private XDG values inside setlocal, without changing the manager environment.
+function Get-HerdrRtlLaunchPlan {
     param($Profile = $script:ActiveProfile)
     $cmd = New-HerdrRtlLauncher -Profile $Profile
     # Point the shortcut straight at cmd.exe running the launcher. Herdr needs a
@@ -490,8 +489,17 @@ function New-HerdrRtlShortcut {
     # fails with "the system cannot find the file specified" even though the file
     # is right there. Going through cmd.exe also means one less set of quoting
     # rules between the shortcut and the program.
-    $target = Join-Path $env:WINDIR 'System32\cmd.exe'
-    $args = '/c "' + $cmd + '"'
+    return [pscustomobject]@{
+        FilePath = (Join-Path $env:WINDIR 'System32\cmd.exe')
+        Arguments = ('/d /c ""' + $cmd + '""')
+        WorkingDirectory = $env:USERPROFILE
+    }
+}
+
+# Create the shortcuts using the same terminal command as the manager.
+function New-HerdrRtlShortcut {
+    param($Profile = $script:ActiveProfile)
+    $plan = Get-HerdrRtlLaunchPlan -Profile $Profile
     # Icon: herdr.exe carries no icon resource at all (a Rust console binary), so a
     # shortcut pointing at it shows the generic window glyph. Ship our own classic
     # .ico of the herdr wordmark instead; it lives in the state dir, not the copy,
@@ -503,13 +511,13 @@ function New-HerdrRtlShortcut {
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {
         try {
             $sc = $ws.CreateShortcut((Get-RtlSafePath -Path ($lnk)))
-            $sc.TargetPath       = $target
-            $sc.Arguments        = $args
+            $sc.TargetPath       = $plan.FilePath
+            $sc.Arguments        = $plan.Arguments
             # Start in the user's home, never in the copy: cmd.exe keeps its
             # working directory open for as long as the window lives (including
             # the pause on a failed start), which would pin the copy folder and
             # make an update or uninstall fail to replace it.
-            $sc.WorkingDirectory = $env:USERPROFILE
+            $sc.WorkingDirectory = $plan.WorkingDirectory
             $sc.IconLocation     = "$iconExe,0"
             $sc.Description      = $Profile.ShortcutDesc
             $sc.Save()

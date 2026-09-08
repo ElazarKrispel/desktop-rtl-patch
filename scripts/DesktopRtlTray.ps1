@@ -256,8 +256,9 @@ $script:MenuAction = {
 # catches for a clean exit). A partial removal keeps the agent and this tray alive.
 function Start-AppUninstall([string]$id) {
     $label = Get-RtlAppLabel $id
+    $dataNotice = if ((Get-RtlProfile $id).RendererMode -eq 'prebuilt') { 'הנתונים הפרטיים של עותק ה-RTL והגדרות ה-RTL יישמרו להתקנה מחדש.' } else { 'נתוני האפליקציה והגדרות ה-RTL יישמרו להתקנה מחדש.' }
     $r = [System.Windows.Forms.MessageBox]::Show(
-        "להסיר את $label? יוסרו העותק, הקיצורים, רישומי המערכת והעדכון האוטומטי. המקור לא ייפגע, והלוגים יישמרו.",
+        "להסיר את $label? יוסרו התוכנה המותאמת, הקיצורים והרישומים שלה. המקור לא ייפגע. $dataNotice הלוגים יישמרו. סוכן הרקע יישאר אם הוא דרוש לאפליקציות אחרות.",
         'Desktop RTL', 'YesNo', 'Question')
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
     $lib = $script:LibPath
