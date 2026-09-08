@@ -1,0 +1,7 @@
+{
+  "mode": "AFTER",
+  "powershell": "5.1.26100.9168",
+  "cases": 7,
+  "fixture": "<unique temporary fixture; retained>",
+  "scope": "Actual startup If AST and logs New-Item commands. Synthetic bin trees; process launch/readiness mocked; no real UI, Registry, network or named events. Fixture retained."
+}
