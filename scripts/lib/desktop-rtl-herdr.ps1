@@ -606,7 +606,7 @@ function Invoke-HerdrRtlInstall {
         sourceSignature = $Source.Signature
         codexVersion    = $Source.Version
         sourcePath      = $Source.AppDir
-        payloadSha256   = (Get-HerdrFileSha256 -Path (Join-Path $script:CopyRoot 'herdr.exe'))
+        payloadSha256   = $verified.payloadSha256
         asarSha256      = $null
     }
     Set-RtlConfigApplied

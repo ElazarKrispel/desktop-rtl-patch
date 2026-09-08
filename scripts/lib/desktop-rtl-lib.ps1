@@ -1242,13 +1242,11 @@ function Update-CodexRtlConfigAsset {
 # stale relative to config.json.
 function Get-RtlConfigHash {
     if (-not (Test-Path $script:ConfigFile)) { return '' }
-    try { return (Get-FileHash -Path $script:ConfigFile -Algorithm SHA256).Hash } catch { return '' }
+    return (Get-FileHash -LiteralPath $script:ConfigFile -Algorithm SHA256 -ErrorAction Stop).Hash
 }
 function Set-RtlConfigApplied {
-    try {
-        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
-        Set-Content -LiteralPath (Get-RtlSafePath -Path ($script:ConfigAppliedMarker)) -Value (Get-RtlConfigHash) -Encoding ASCII -NoNewline
-    } catch {}
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path $script:StateDir) | Out-Null }
+    Set-Content -LiteralPath (Get-RtlSafePath -Path $script:ConfigAppliedMarker) -Value (Get-RtlConfigHash) -Encoding ASCII -NoNewline -ErrorAction Stop
 }
 
 # Apply config.json to the copy's config asset IF it changed since the last apply
@@ -1986,6 +1984,11 @@ function Invoke-RtlUpdateCore {
         # payload / shortcut logic, so it must NOT early-return - it re-patches on the next pass.
         $patchCurrent = ($state -and $state.patchVersion -eq $script:PatchVersion)
         if (-not $Force -and $current -eq $src.Signature -and (Test-Path $copyExe) -and $patchCurrent) {
+            $configDigest=Get-RtlConfigHash
+            $appliedDigest=if (Test-Path -LiteralPath $script:ConfigAppliedMarker) { (Get-Content -LiteralPath $script:ConfigAppliedMarker -Raw -ErrorAction Stop).Trim() } else { '' }
+            if ($configDigest -and $configDigest -ne $appliedDigest -and $p.RendererMode -notin @('dir','inline') -and (Test-CodexRtlRunning)) {
+                return (New-RtlOperationResult -Status Deferred -Reason 'Settings are pending until the RTL copy closes.' -Prepared $false)
+            }
             Sync-RtlConfigAsset -AppId $p.Id -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
             try { $verify=Confirm-RtlActiveCopy -Source $src -AllowExternalNodeFallback:$AllowExternalNodeFallback }
             catch { Write-RtlManagementReceipt -Phase VerificationPending; throw }
@@ -2208,7 +2211,7 @@ function Invoke-CodexRtlWatchLoop {
     $fsw = New-RtlSourceWatcher -WatchPath $watchPath
     Write-RtlLog ("Watch loop starting (poll={0}s, fsw={1})." -f $PollSec, [bool]$fsw)
     try {
-        try { Invoke-CodexRtlUpdate -Auto } catch { Write-RtlLog "watch error: $($_.Exception.Message)" }
+        try { $result=Invoke-CodexRtlUpdate -Auto; Write-RtlLog (Format-RtlOperationResult -Result $result) } catch { Write-RtlLog "watch error: $($_.Exception.Message)" }
         while ($Loop) {
             if ($fsw) {
                 $r = $fsw.WaitForChanged([System.IO.WatcherChangeTypes]::All, ($PollSec * 1000))
@@ -2216,7 +2219,7 @@ function Invoke-CodexRtlWatchLoop {
             } else {
                 Start-Sleep -Seconds $PollSec
             }
-            try { Invoke-CodexRtlUpdate -Auto } catch { Write-RtlLog "watch error: $($_.Exception.Message)" }
+            try { $result=Invoke-CodexRtlUpdate -Auto; Write-RtlLog (Format-RtlOperationResult -Result $result) } catch { Write-RtlLog "watch error: $($_.Exception.Message)" }
         }
     } finally {
         if ($fsw) { try { $fsw.Dispose() } catch {} }
@@ -2575,7 +2578,12 @@ function Remove-RtlCopyShellRegistrations {
                'HKCU\Software\Classes\Directory\Background\shell')
     $targets = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
     foreach ($h in $hives) {
-        $out = @(); try { $out = @(& reg query $h /s /f $pattern /d 2>$null) } catch {}
+        $registryPath='Microsoft.PowerShell.Core\Registry::'+$h.Replace('HKCU\','HKEY_CURRENT_USER\')
+        try {
+            if (-not (Test-Path -LiteralPath $registryPath -ErrorAction Stop)) { continue }
+            $out=@(& reg query $h /s /f $pattern /d 2>$null)
+            if ($LASTEXITCODE -ne 0 -and -not $out.Count) { throw 'Registry search returned no readable result.' }
+        } catch { $left += ($registryPath + ' (discovery failed: ' + $_.Exception.Message + ')'); continue }
         foreach ($line in $out) {
             $t = ([string]$line).Trim()
             if (-not $t.StartsWith('HKEY_', [StringComparison]::OrdinalIgnoreCase)) { continue }
@@ -2591,11 +2599,13 @@ function Remove-RtlCopyShellRegistrations {
         $ps = 'Microsoft.PowerShell.Core\Registry::' + $t
         # The command/exe to verify: LocalServer32 default for a CLSID, command default for a verb.
         $verifyExe = $null
+        $readFailed = $false
         foreach ($vk in @((Join-Path $ps 'LocalServer32'), (Join-Path $ps 'command'))) {
-            try { if (Test-Path -LiteralPath $vk) { $v = (Get-Item -LiteralPath $vk -ErrorAction Stop).GetValue(''); if ($v) { $verifyExe = Get-RtlCommandExePath ([string]$v); break } } } catch {}
+            try { if (Test-Path -LiteralPath $vk -ErrorAction Stop) { $v = (Get-Item -LiteralPath $vk -ErrorAction Stop).GetValue(''); if ($v) { $verifyExe = Get-RtlCommandExePath ([string]$v); break } } } catch { $readFailed=$true }
         }
         # Fall back to an Icon value on the key itself (context-menu verbs carry "<exe>,0").
-        if (-not $verifyExe) { try { $iv = (Get-Item -LiteralPath $ps -ErrorAction Stop).GetValue('Icon'); if ($iv) { $verifyExe = Get-RtlCommandExePath ([string]$iv) } } catch {} }
+        if (-not $verifyExe) { try { $iv = (Get-Item -LiteralPath $ps -ErrorAction Stop).GetValue('Icon'); if ($iv) { $verifyExe = Get-RtlCommandExePath ([string]$iv) } } catch { $readFailed=$true } }
+        if ($readFailed) { $left += ($t + ' (ownership could not be read)'); continue }
         if (-not $verifyExe -or -not (Test-RtlPathUnderRoot -Path $verifyExe -Roots @($CopyRoot))) { continue }
         try { Remove-Item -LiteralPath $ps -Recurse -Force -ErrorAction Stop; Write-RtlLog "removed registry $t (pointed at the copy)" }
         catch { $left += $t; Write-RtlLog "could not remove registry $t : $($_.Exception.Message)" }
@@ -2788,12 +2798,15 @@ function Register-RtlAgent {
 }
 function Unregister-RtlAgent {
     Invoke-RtlWithSetupMutex {
-        Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)      # stop the unified tray (never self)
-        $val = $null
-        try { $val = (Get-ItemProperty -Path $script:RunKey -Name $script:AgentRunName -ErrorAction Stop).$($script:AgentRunName) } catch {}
+        Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)
+        if (-not (Test-Path -LiteralPath $script:RunKey -ErrorAction Stop)) { return }
+        $properties=Get-ItemProperty -LiteralPath $script:RunKey -ErrorAction Stop
+        $entry=$properties.PSObject.Properties[$script:AgentRunName]
+        if (-not $entry) { return }
+        $val=[string]$entry.Value
         if ($val -and -not (Test-RtlOwnedCommand $val)) { Write-RtlAgentLog "left agent Run value (unrecognized): $val"; return }
-        try { Remove-ItemProperty -Path $script:RunKey -Name $script:AgentRunName -ErrorAction Stop; Write-RtlAgentLog 'removed agent autostart.' }
-        catch { Write-RtlAgentLog 'no agent autostart to remove.' }
+        Remove-ItemProperty -LiteralPath $script:RunKey -Name $script:AgentRunName -ErrorAction Stop
+        Write-RtlAgentLog 'removed agent autostart.'
     }
 }
 
@@ -2839,11 +2852,27 @@ function Restart-RtlAgentTray {
 # tray, unregister the Run value, remove the neutral runtime; agent.log is retained.
 function Invoke-RtlAgentLastCleanup {
     Invoke-RtlWithSetupMutex {
-        Unregister-RtlAgent
+        $left=@()
+        try { Unregister-RtlAgent } catch { $left += ($script:RunKey + '\' + $script:AgentRunName); Write-RtlAgentLog $_.Exception.Message }
         foreach ($p in @($script:AgentBinDir, $script:AgentBinStaging, $script:AgentBinOld,
                          $script:AgentPendingSelfUpdate, $script:AgentMarker, $script:AgentConfigFile,
                          $script:AgentReadyFile, "$($script:AgentConfigFile).bak")) {
-            if (Test-Path $p) { try { Remove-RtlSafeItem -LiteralPath $p -Recurse -Force; Write-RtlAgentLog "removed $p" } catch { Write-RtlAgentLog "could not remove $p : $($_.Exception.Message)" } }
+            if (Test-Path $p) {
+                try { Remove-RtlSafeItem -LiteralPath $p -Recurse -Force -ErrorAction Stop; Write-RtlAgentLog "removed $p" }
+                catch { $left += $p; Write-RtlAgentLog "could not remove $p : $($_.Exception.Message)" }
+            }
+        }
+        if ($left.Count) {
+            $result=New-RtlOperationResult -Status Partial -Reason 'The app was removed, but background-agent cleanup is incomplete.' -Leftovers $left -NextAction 'Close programs using these resources or reboot, then retry removal from the installer or CLI.'
+            if (Enter-RtlLock) {
+                try { Write-RtlManagementReceipt -Phase CleanupPending -Leftovers $left }
+                finally { Exit-RtlLock }
+            }
+            try { Save-RtlOperationResult -Result $result -Operation uninstall } catch { Write-RtlAgentLog "Could not save cleanup result: $($_.Exception.Message)" }
+            if (Test-Path -LiteralPath $script:AgentBinDir) { try { Register-RtlAgent } catch {} }
+            $failure=New-Object System.Exception ('[PARTIAL] ' + (Format-RtlOperationResult -Result $result))
+            $failure.Data['Leftovers']=$left
+            throw $failure
         }
         Write-RtlAgentLog 'last-app agent cleanup done (agent.log kept).'
     }
@@ -2991,12 +3020,17 @@ function Invoke-RtlUninstallCore {
         foreach ($f in (@($script:ConfigAppliedMarker, $script:BlockedFile, $launcher) + $extraFiles)) {
             if ($f -and (Test-Path $f) -and -not (Remove-RtlPathRetry $f)) { $uncertain = $true; $leftovers += $f }
         }
-        # Remove this app's LEGACY per-app Run value if it is still ours (the agent replaces it).
+        # A registry read/delete failure is an uncertain removal, not absence.
+        $legacy = $script:ActiveProfile.WatcherRunName
         try {
-            $legacy = $script:ActiveProfile.WatcherRunName
-            $val = (Get-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue).$legacy
-            if ($val -and (Test-RtlOwnedCommand $val)) { Remove-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue; Write-RtlLog "removed legacy Run value $legacy" }
-        } catch {}
+            if (Test-Path -LiteralPath $script:RunKey -ErrorAction Stop) {
+                $properties=Get-ItemProperty -LiteralPath $script:RunKey -ErrorAction Stop
+                $entry=$properties.PSObject.Properties[$legacy]
+                if ($entry -and $entry.Value -and (Test-RtlOwnedCommand ([string]$entry.Value))) {
+                    Remove-ItemProperty -LiteralPath $script:RunKey -Name $legacy -ErrorAction Stop
+                }
+            }
+        } catch { $uncertain=$true; $leftovers += ($script:RunKey + '\' + $legacy) }
         if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-RtlSafeItem -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true; $leftovers += $script:LogsDir } }
         # Keep version metadata and the cleanup intent until all owned resources are gone.
         if (-not $uncertain -and (Test-Path -LiteralPath $script:StateFile)) {

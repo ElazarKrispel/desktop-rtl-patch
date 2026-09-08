@@ -1,7 +1,7 @@
 # One result contract for CLI, installer, settings and background workers.
 function New-RtlOperationResult {
     param([ValidateSet('Succeeded','AlreadyCurrent','Deferred','Busy','Blocked','Partial','Failed')][string]$Status,
-          [string]$Reason='', [bool]$Prepared=$false, [string[]]$Leftovers=@(), [string]$NextAction='')
+          [string]$Reason='', [bool]$Prepared=$false, [string[]]$Leftovers=@(), [string]$NextAction='', [string]$App=$script:ActiveProfile.Id)
     $success=$Status -in @('Succeeded','AlreadyCurrent')
     if (-not $NextAction -and -not $success) {
         $NextAction=switch ($Status) {
@@ -11,7 +11,7 @@ function New-RtlOperationResult {
             default { 'Read the reported reason, then retry explicitly or collect diagnostics.' }
         }
     }
-    return [pscustomobject]@{ App=$script:ActiveProfile.Id; Status=$Status; Success=$success; Certain=$success;
+    return [pscustomobject]@{ App=$App; Status=$Status; Success=$success; Certain=$success;
         Reason=$Reason; Prepared=$Prepared; Leftovers=@($Leftovers); NextAction=$NextAction }
 }
 function Get-RtlOperationExitCode {
@@ -76,6 +76,7 @@ function Confirm-RtlActiveCopy {
     if ($p.RendererMode -eq 'prebuilt') {
         Test-HerdrRtlBuild -Root $script:CopyRoot -Source $Source | Out-Null
         $hash=Get-HerdrFileSha256 -Path (Join-Path $script:CopyRoot $p.ExeRelPath)
+        if (-not $hash) { throw '[VERIFY] Active Herdr binary digest could not be read.' }
         return [pscustomobject]@{payloadSha256=$hash;asarSha256=$null}
     }
     $patch=Get-PatchJsPath

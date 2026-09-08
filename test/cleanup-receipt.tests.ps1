@@ -41,8 +41,8 @@ try {
         Check $visible 'partial install rediscovered after library reload without source/exe'
         Check $retainedState 'partial cleanup retains version evidence'
         Check ($status.State -eq 'CleanupPending') 'cleanup intent takes priority over source discovery'
-        $blocked=$false
-        try { Invoke-CodexRtlUpdate -Auto | Out-Null } catch { $blocked=$_.Exception.Message -match '\[CLEANUP\]' }
+        $blockedResult=Invoke-CodexRtlUpdate -Auto
+        $blocked=($blockedResult.Status -eq 'Blocked' -and $blockedResult.Reason -match '\[CLEANUP\]')
         Check $blocked 'auto update cannot resurrect a removal'
         Check ([IO.File]::Exists($locked)) 'auto guard preserves leftovers'
         $complete=Invoke-CodexRtlUninstall
