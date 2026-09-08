@@ -4,7 +4,7 @@ This focused addendum closes startup call sites outside the shared engine's muta
 
 The tray's staged self-update executes before the main library loads. It now loads only `desktop-rtl-paths.ps1`, checks staging and all rollback/marker/readiness candidates before any mutation, and uses guarded removal/rename for both success and recovery. An error emits a startup warning and stops this startup attempt; it does not silently continue into a potentially swapped runtime. Rejected paths and pending update evidence are retained.
 
-Staging must include the path, management and operation-result helpers, tray script/launcher, and a nonempty readiness generation. The operation-result helper is supplied by PR-03; this stack is intended to release together. Missing components fail closed. GUI and tray log-folder creation also use the filesystem guard.
+Staging must include the path and management helpers, tray script/launcher, and a nonempty readiness generation. Missing components fail closed. GUI and tray log-folder creation also use the filesystem guard.
 
 ## Evidence
 
@@ -13,7 +13,7 @@ Windows PowerShell `5.1.26100.9168`, synthetic directories only. Before the chan
 After the change, all seven cases pass:
 
 1. AgentHome junction: the external tree snapshot is unchanged and no launch occurs.
-2. Missing operation-result helper: the existing bin remains active, with no launch.
+2. Missing management helper: the existing bin remains active, with no launch.
 3. Missing tray launcher: no swap or launch occurs.
 4. Junction at `bin.old`: rejected before a partial swap; its external sentinel is unchanged.
 5. Ordinary staging: swaps successfully and completes using a simulated readiness record.

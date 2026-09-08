@@ -1,6 +1,7 @@
-param([switch]$Baseline,[string]$SourceRoot=(Split-Path $PSScriptRoot -Parent))
+param([switch]$Baseline,[string]$SourceRoot)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
+if (-not $SourceRoot) { $SourceRoot=$repo }
 . (Join-Path $repo 'scripts\lib\desktop-rtl-paths.ps1')
 $tray=Join-Path $SourceRoot 'scripts\DesktopRtlTray.ps1'
 $ast=[Management.Automation.Language.Parser]::ParseFile($tray,[ref]$null,[ref]$null)
@@ -60,7 +61,7 @@ try{
         if(-not (Test-Path (Join-Path $case.Home 'pending-selfupdate')) -or -not $script:diagnostics){throw 'Missing retained evidence or diagnostic'}
         $case=New-Case 'missing-helper';$env:LOCALAPPDATA=$case.Local;$script:caseHome=$case.Home
         # A single fixture file is deleted, never a recursive or original-app target.
-        [IO.File]::Delete((Join-Path $case.Home 'bin.staging\desktop-rtl-results.ps1'))
+        [IO.File]::Delete((Join-Path $case.Home 'bin.staging\desktop-rtl-managed.ps1'))
         & $startupAction
         if([IO.File]::ReadAllText((Join-Path $case.Home 'bin\identity.txt')) -ne 'bin' -or $script:launches -ne 0){throw 'Incomplete runtime swapped or launched'}
         $case=New-Case 'missing-launcher';$env:LOCALAPPDATA=$case.Local;$script:caseHome=$case.Home
