@@ -1,27 +1,9 @@
 ﻿$ErrorActionPreference = 'Stop'
-$repo = Split-Path $PSScriptRoot -Parent
-$temp = Join-Path ([IO.Path]::GetTempPath()) ('rtl-renderer-tests-' + [guid]::NewGuid().ToString('N'))
-$oldLocal = $env:LOCALAPPDATA; $oldRoam = $env:APPDATA
-$env:LOCALAPPDATA = Join-Path $temp 'local'; $env:APPDATA = Join-Path $temp 'roaming'
-. (Join-Path $repo 'scripts\lib\desktop-rtl-lib.ps1')
-
-# Shortcut paths come from [Environment]::GetFolderPath, which resolves the REAL
-# Start menu and Desktop no matter what APPDATA says. Without this the uninstall
-# assertions below delete the user's actual "(RTL)" shortcuts, which is how the
-# Grok Bot one went missing. Wrap Set-RtlActiveApp so every call redirects them
-# into the temp tree instead.
-$script:ShortcutSandbox = Join-Path $temp 'shortcuts'
-New-Item -ItemType Directory -Force -Path $script:ShortcutSandbox | Out-Null
-$script:RealSetRtlActiveApp = ${function:Set-RtlActiveApp}
-function Set-RtlActiveApp {
-    param([string]$AppId = 'codex')
-    & $script:RealSetRtlActiveApp $AppId | Out-Null
-    $script:ShortcutStart   = Join-Path $script:ShortcutSandbox ($script:ShortcutLabel + '.lnk')
-    $script:ShortcutDesktop = Join-Path $script:ShortcutSandbox ('Desktop - ' + $script:ShortcutLabel + '.lnk')
-    $script:ShortcutPath    = $script:ShortcutStart
-    $script:LegacyShortcuts = @()
-    $script:ShortcutPaths   = @($script:ShortcutStart, $script:ShortcutDesktop)
-}
+$testRepo = Split-Path $PSScriptRoot -Parent
+$node = (Get-Command node -ErrorAction Stop).Source
+if (-not $node) { throw 'Node.js is required; no checks may be skipped.' }
+. (Join-Path $PSScriptRoot 'isolated-test-support.ps1')
+$temp = Initialize-RtlTestSandbox -RepositoryRoot $testRepo
 
 $script:passed = 0
 function Assert-True([bool]$Value, [string]$Name) {
@@ -44,6 +26,9 @@ function New-Fixture([string]$Html) {
 }
 
 try {
+    . (Join-Path $testRepo 'scripts\lib\desktop-rtl-lib.ps1')
+    Set-RtlTestProductBoundaries
+    foreach ($id in @(Get-RtlAppIds)) { Set-RtlActiveApp $id }
     New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA,$env:APPDATA | Out-Null
     $cases = @(
         @('<script type="module" src="./assets/x.js"></script>', './assets/x.js'),
@@ -178,6 +163,8 @@ try {
     # ---- uninstall: partial (locked file) reports leftovers, not success -----
     Set-RtlActiveApp grokbot | Out-Null
     New-Item -ItemType Directory -Force -Path $grok.CopyRoot | Out-Null
+    $partialExe = Join-Path $grok.CopyRoot $grok.ExeRelPath
+    [IO.File]::WriteAllText($partialExe, 'synthetic executable; never launched')
     $locked = Join-Path $grok.CopyRoot 'locked.bin'
     [IO.File]::WriteAllText($locked, 'x')
     $fs = [IO.File]::Open($locked, 'Open', 'Read', 'None')   # exclusive: blocks deletion
@@ -185,6 +172,7 @@ try {
         $res = Invoke-CodexRtlUninstall
         Assert-True (-not $res.Certain) 'uninstall with a locked file reports Certain=$false'
         Assert-True (@($res.Leftovers).Count -ge 1) 'uninstall with a locked file lists leftovers'
+        Assert-True (-not (Test-Path $partialExe) -and (Test-Path $locked)) 'partial removal really deleted the exe while a non-exe remains locked'
     } finally { $fs.Close() }
     $res2 = Invoke-CodexRtlUninstall
     Assert-True ($res2.Certain) 'uninstall after the lock is released reports Certain=$true'
@@ -220,7 +208,7 @@ try {
     }
     Assert-True (-not (Test-RtlShouldLatchError 'a bare uncoded error')) 'an uncoded error never latches'
 
-    # SourceMissing beats a stale block, and status never mutates state (read-only).
+    # This case covers blocked.json only, not corrupt state quarantine.
     Set-RtlActiveApp grokbot | Out-Null
     New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $grok.CopyRoot $grok.ExeRelPath) -Parent) | Out-Null
     [IO.File]::WriteAllText((Join-Path $grok.CopyRoot $grok.ExeRelPath), 'exe')   # copy present, no source installed
@@ -266,14 +254,11 @@ try {
     Assert-True (-not (Test-Path $script:StateDir)) 'Write-RtlLog does not create the state folder when it is absent'
 
     # ---- fuseoff: flips one byte, idempotent, refuses paths outside --root ----
-    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
-    if ($node) {
+    & {
         $fuseDir = Join-Path $temp 'fuse'; New-Item -ItemType Directory -Force -Path $fuseDir | Out-Null
-        # Copy the editor into the ASCII temp tree: node on Windows can fail to resolve a
-        # module path that contains non-ASCII characters (the repo path has Hebrew), which
-        # is a test-harness artifact, not a product issue (the deployed bin path is ASCII).
-        # NB: $repo is clobbered after the dot-source ($script:Repo in the lib aliases it,
-        # PS vars are case-insensitive), so derive the source path from $PSScriptRoot.
+        # Run the real editor on synthetic bytes. Neither temporary nor deployed
+        # paths are assumed to be ASCII. Derive the repository path independently
+        # because the product's $script:Repo is its GitHub repository identifier.
         $editor = Join-Path $fuseDir 'asar-edit.mjs'
         Copy-Item (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\lib\asar-edit.mjs') $editor -Force
         $fake = Join-Path $fuseDir 'fake.bin'
@@ -295,8 +280,6 @@ try {
             & $node $editor fuseoff $fake '--root' (Join-Path $temp 'other-root') *> $null
             Assert-True ($LASTEXITCODE -eq 22) 'fuseoff refuses a target outside --root'
         } finally { $ErrorActionPreference = $savedEap }
-    } else {
-        Write-Host '  (node not on PATH; skipping fuseoff CLI checks)'
     }
 
     # ---- tray quit event: signal, dispose, reopen must be un-signaled --------
@@ -305,7 +288,7 @@ try {
     # the real tray, and (b) never destroy the object on Dispose (the tray still holds a handle),
     # breaking the isolation check. A unique name verifies the same create/Set/Dispose/reopen
     # semantics without touching a running tray.
-    $quitName = "Local\DesktopRtlTrayQuitTest_$([guid]::NewGuid().ToString('N'))"
+    $quitName = $script:RtlTestIpcPrefix + 'quit-lifetime'
     $ev = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $quitName)
     [void]$ev.Set(); $ev.Dispose()
     $ev2 = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $quitName)
@@ -421,7 +404,7 @@ try {
     # CreateProcess, which cannot execute a .cmd at all, so handing the launcher
     # straight to wt.exe fails with "the system cannot find the file specified".
     New-HerdrRtlShortcut -Profile $herdr
-    Assert-True (Test-Path $script:ShortcutStart) 'herdr shortcut is created'
+    Assert-True (Test-Path $script:ShortcutStart) 'herdr shortcut save is recorded in the fixture'
     $shellLink = (New-Object -ComObject WScript.Shell).CreateShortcut($script:ShortcutStart)
     Assert-True ($shellLink.TargetPath -like '*\cmd.exe') 'herdr shortcut runs the launcher through cmd.exe'
     Assert-True ($shellLink.Arguments -match '(?i)^/c "') 'herdr shortcut passes /c to the shell'
@@ -435,7 +418,7 @@ try {
     Assert-True ($shellLink.IconLocation -match 'herdr-rtl\.ico') 'herdr shortcut uses the wordmark icon'
     Assert-True (Test-Path (Join-Path $herdr.StateDir 'herdr-rtl.ico')) 'wordmark icon is placed in the state dir'
 
-    # Settings write end to end.
+    # Settings writer integration in a synthetic profile, not application E2E.
     $written = Sync-HerdrRtlConfig -Source $fakeSrc -Profile $herdr
     Assert-True ($written -eq 'ltr') 'config sync returns the applied mode'
     Assert-True ((([IO.File]::ReadAllText($cfgPath)) -match '(?m)^bidi = "ltr"\r?$')) 'config sync wrote bidi into the private config'
@@ -452,8 +435,8 @@ try {
     Assert-True (-not $script:ShortcutStart.StartsWith($realPrograms, [StringComparison]::OrdinalIgnoreCase)) 'tests never write to the real Start menu'
     Assert-True ($script:ShortcutStart.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase)) 'test shortcuts stay in the temp tree'
 
-    Write-Host "PASS: $script:passed assertions"
+    Assert-RtlTestIsolation
+    Write-Host "PASS: $script:passed assertions (isolated fixtures; not app E2E)"
 } finally {
-    $env:LOCALAPPDATA = $oldLocal; $env:APPDATA = $oldRoam
-    if (Test-Path $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
+    Complete-RtlTestSandbox
 }
