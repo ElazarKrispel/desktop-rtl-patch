@@ -233,7 +233,11 @@ $btnSave.Add_Click({
                 try { Update-CodexRtlConfigAsset -AppId $App; $status.Text = "נשמר והוחל. פתח/י מחדש את $appLabel לראות את השינוי." }
                 catch {
                     Write-RtlLog "config apply fallback to rebuild: $($_.Exception.Message)"
-                    try { Invoke-CodexRtlUpdate -Force; $status.Text = 'נשמר והוחל (נבנה מחדש).' }
+                    try {
+                        $res = Invoke-CodexRtlUpdate -Force
+                        if (-not $res.Success) { throw (Format-RtlOperationResult -Result $res) }
+                        $status.Text = 'נשמר והוחל (נבנה מחדש).'
+                    }
                     catch { $status.Text = 'נשמר, אך ההחלה נכשלה: ' + (Get-RtlHebrewError $_.Exception.Message) }
                 }
             }

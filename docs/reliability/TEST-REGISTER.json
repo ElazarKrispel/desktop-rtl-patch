@@ -1,0 +1,30 @@
+{
+  "baseline": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "testedProductCommit": "3b9f5b5f248982c81951da2fc7b7dfe43ca7dbd9",
+  "date": "2026-09-08",
+  "platform": "Windows",
+  "powershell": "5.1.26100.9168",
+  "node": "24.14.0",
+  "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File test/Run-Tests.ps1",
+  "exitCode": 0,
+  "suites": [
+    {"name": "PowerShell parse and encoding", "passed": 27},
+    {"name": "JavaScript syntax", "passed": 2},
+    {"file": "test/isolation.harness.ps1", "passed": 16},
+    {"file": "test/renderer-injection.harness.ps1", "passed": 162},
+    {"file": "test/herdr-lifecycle.harness.ps1", "passed": 34},
+    {"file": "test/cleanup-receipt.tests.ps1", "passed": 13},
+    {"file": "test/bootstrap-integrity.tests.ps1", "passed": 22},
+    {"file": "test/path-boundaries.harness.ps1", "passed": 12},
+    {"file": "test/path-boundaries.mjs", "passed": 7},
+    {"file": "test/operation-callers.tests.ps1", "passed": 66},
+    {"file": "test/operation-engine.tests.ps1", "passed": 52},
+    {"file": "test/registry-outcome.tests.ps1", "passed": 6},
+    {"file": "test/startup-boundaries.tests.ps1", "passed": 7}
+  ],
+  "actual": ["Synthetic Windows filesystem writes and exclusive locks", "Fixture directory renames and rollback", "Fixture junction and hardlink checks", "Node editor execution against synthetic archives", "Full bootstrap control flow", "Two isolated worker runspaces", "Receipt/result file persistence and stale acknowledgement", "PowerShell parsing and encoding"],
+  "modeled": ["Network downloads", "Installer/archive extraction in bootstrap cases", "Application launch and native version checks", "Registry discovery and deletion", "Agent registration and setup mutex in operation tests", "WinForms dialogs and controls", "Source discovery", "Injected transaction-verifier failures", "Tray readiness"],
+  "notRun": ["Real install/update/uninstall cycle", "Real Herdr/CMD launch with Hebrew path", "Live WinForms/tray/WSH shortcuts", "Operating-system reboot", "Worker termination and result recovery across separate processes", "Production Registry/COM/process/named-event integration", "Real tray readiness under crash", "Real bootstrap network installation", "Concurrent same-user ancestor replacement races"],
+  "preservation": "No original installation, live application or user data was changed. Earlier policy-blocked audit fixture cleanup was not retried. Retained synthetic test trees are not published.",
+  "interpretation": "Counts represent bounded assertions or checks, not end-to-end product scenarios. The passing baseline defect observations reproduce old behavior and are not claims that old code met acceptance criteria."
+}

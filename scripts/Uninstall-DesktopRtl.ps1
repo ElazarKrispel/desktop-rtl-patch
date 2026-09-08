@@ -16,6 +16,9 @@ $appName = $script:ActiveProfile.DisplayName
 
 Start-RtlInstallLog 'uninstall' | Out-Null
 $res = Invoke-CodexRtlUninstall -PurgeLogs:$PurgeLogs
+Save-RtlOperationResult -Result $res -Operation uninstall
+Write-Host (Format-RtlOperationResult -Result $res)
+if (-not $res.Success) { exit (Get-RtlOperationExitCode -Result $res) }
 
 # Agent lifecycle: keep the unified agent while any app remains; tear it down only when
 # none remain AND this cleanup was certain (else retain the agent and log).
@@ -24,19 +27,9 @@ if ($remaining.Count -gt 0) {
     Write-Host "[*] $($remaining.Count) app(s) still installed; keeping the unified agent." -ForegroundColor Cyan
     try { Register-RtlAgent } catch {}
     Restart-RtlAgentTray                       # re-detect the reduced app set
-} elseif ($res.Certain) {
+} elseif ($res.Success) {
     Write-Host "[*] Last app removed; removing the unified background agent." -ForegroundColor Cyan
     Invoke-RtlAgentLastCleanup
-} else {
-    Write-Host "[!] Cleanup was uncertain; retaining the unified agent." -ForegroundColor Yellow
-}
-
-if (-not $res.Certain) {
-    Write-Host "[!] Some items could not be removed:" -ForegroundColor Yellow
-    foreach ($l in @($res.Leftovers)) { Write-Host "      $l" -ForegroundColor Yellow }
-    Write-Host "    Close anything using them (antivirus, File Explorer) or reboot, then run this again." -ForegroundColor Yellow
-    Write-Host "    The original $appName install is unaffected." -ForegroundColor DarkGray
-    exit 1
 }
 Write-Host "[OK] Uninstalled. The original $appName install is unaffected." -ForegroundColor Green
 if (-not $PurgeLogs) { Write-Host "     (Logs kept at $($script:LogsDir).)" -ForegroundColor DarkGray }

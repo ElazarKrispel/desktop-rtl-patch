@@ -28,12 +28,12 @@ $appName = $script:ActiveProfile.DisplayName
 Start-RtlInstallLog 'install' | Out-Null
 Test-RtlPackage -RepoRoot $repoRoot | Out-Null
 
-if (Test-CodexRtlRunning) {
-    throw "$appName (RTL) is currently running. Close it, then re-run the installer."
-}
-
 Write-Host "[*] Building the patched $appName copy..." -ForegroundColor Cyan
-Invoke-CodexRtlUpdate -Force -AllowExternalNodeFallback:$AllowExternalNodeFallback
+$result = Invoke-CodexRtlUpdate -Force -AllowExternalNodeFallback:$AllowExternalNodeFallback
+if (-not $result.Success) {
+    Write-Host (Format-RtlOperationResult -Result $result) -ForegroundColor Yellow
+    exit (Get-RtlOperationExitCode -Result $result)
+}
 
 $state = Read-RtlState
 if (-not $state) { throw "Install did not complete. See $($script:LogFile)." }

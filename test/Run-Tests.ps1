@@ -28,8 +28,10 @@ foreach ($file in @('scripts\lib\asar-edit.mjs','src\desktop-rtl-patch.js')) {
 Write-Host "PASS: $($psFiles.Count) PS5.1 parse/encoding checks; 2 Node syntax checks"
 # Each harness owns process-wide environment and stubs. A fresh process prevents
 # one suite's functions, environment or errors from leaking into the next one.
-foreach ($suite in @('isolation.harness.ps1','renderer-injection.harness.ps1','herdr-lifecycle.harness.ps1','cleanup-receipt.tests.ps1')) {
+foreach ($suite in @('isolation.harness.ps1','renderer-injection.harness.ps1','herdr-lifecycle.harness.ps1','cleanup-receipt.tests.ps1','bootstrap-integrity.tests.ps1','path-boundaries.harness.ps1','operation-callers.tests.ps1','operation-engine.tests.ps1','registry-outcome.tests.ps1','startup-boundaries.tests.ps1')) {
     & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot $suite)
     if ($LASTEXITCODE -ne 0) { throw "Test suite failed: $suite (exit $LASTEXITCODE)" }
 }
+& $node (Join-Path $PSScriptRoot 'path-boundaries.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Node path boundary suite failed.' }
 Write-Host 'PASS: all required isolated suites'

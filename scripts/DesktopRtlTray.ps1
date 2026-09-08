@@ -37,7 +37,7 @@ if (-not $SelfTest -and -not $NoRelaunch) {
         $wscript     = Join-Path $env:WINDIR 'System32\wscript.exe'
         function Test-RtlBinFiles([string]$d) {
             Assert-RtlSafePath -Path $d -Tree
-            foreach ($f in @('desktop-rtl-lib.ps1', 'desktop-rtl-paths.ps1', 'desktop-rtl-managed.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1', 'DesktopRtlTray.ps1', 'Desktop-RTL-Tray.vbs', 'generation.txt')) {
+            foreach ($f in @('desktop-rtl-lib.ps1', 'desktop-rtl-paths.ps1', 'desktop-rtl-managed.ps1', 'desktop-rtl-results.ps1', 'asar-edit.mjs', 'desktop-rtl-patch.js', 'Watch-DesktopRtl.ps1', 'DesktopRtlTray.ps1', 'Desktop-RTL-Tray.vbs', 'generation.txt')) {
                 if (-not (Test-Path (Join-Path $d $f))) { return $false }
             }
             return $true
@@ -267,27 +267,88 @@ $script:MenuAction = {
     }
 }
 
-# Remove one app's RTL copy in a SEPARATE hidden process, so the ~2GB delete never freezes
-# the tray. That process runs the full lifecycle (Invoke-CodexRtlUninstall + agent
-# reconcile): if apps remain it restarts this tray so it re-detects the reduced set; if it
-# was the last app it tears the agent down (signaling our quit event, which the drain timer
-# catches for a clean exit). A partial removal keeps the agent and this tray alive.
+# Keep removal in a managed worker. Save and display its terminal result before
+# reconciling agent lifetime, including when this was the last installed app.
 function Start-AppUninstall([string]$id) {
     $label = Get-RtlAppLabel $id
     $dataNotice = if ((Get-RtlProfile $id).RendererMode -eq 'prebuilt') { 'הנתונים הפרטיים של עותק ה-RTL והגדרות ה-RTL יישמרו להתקנה מחדש.' } else { 'נתוני האפליקציה והגדרות ה-RTL יישמרו להתקנה מחדש.' }
+    if ($script:Sync.Busy) { Show-TrayBalloon $label 'מתבצעת פעולה אחרת. ההסרה לא התחילה; נסה/י שוב לאחר סיומה.' 'Warning'; return }
     $r = [System.Windows.Forms.MessageBox]::Show(
         "להסיר את $label? יוסרו התוכנה המותאמת, הקיצורים והרישומים שלה. המקור לא ייפגע. $dataNotice הלוגים יישמרו. סוכן הרקע יישאר אם הוא דרוש לאפליקציות אחרות.",
         'Desktop RTL', 'YesNo', 'Question')
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
-    $lib = $script:LibPath
-    $ps = (Get-Command powershell.exe).Source
-    $inner = ". `"$lib`"; Set-RtlActiveApp '$id'; " +
-        'if (Test-CodexRtlRunning) { [void](Stop-CodexRtlCopy) }; ' +
-        '$res = Invoke-CodexRtlUninstall; $rem = @(Get-RtlInstalledApps); ' +
-        'if ($rem.Count -gt 0) { Register-RtlAgent; Restart-RtlAgentTray } ' +
-        'elseif ($res.Certain) { Invoke-RtlAgentLastCleanup } else { Restart-RtlAgentTray }'
-    Start-Process -FilePath $ps -WindowStyle Hidden -ArgumentList @('-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', $inner)
+    # A running copy produces Busy with a next action; never stop it implicitly.
+    $script:Sync.Busy = $true; $script:Sync.Done = $false; $script:Sync.Op = 'uninstall'
+    $script:Sync.Err = $null; $script:Sync.Results = $null
+    $script:Sync.OperationId = [Guid]::NewGuid().ToString('N')
+    $rs = [runspacefactory]::CreateRunspace(); $rs.ApartmentState = 'STA'; $rs.Open()
+    $rs.SessionStateProxy.SetVariable('Sync', $script:Sync)
+    $rs.SessionStateProxy.SetVariable('LibPath', $script:LibPath)
+    $rs.SessionStateProxy.SetVariable('AppId', $id)
+    $ps = [powershell]::Create(); $ps.Runspace = $rs
+    [void]$ps.AddScript({
+            $ErrorActionPreference = 'Stop'
+            try {
+                . $LibPath
+                Set-RtlActiveApp $AppId | Out-Null
+                $res = Invoke-CodexRtlUninstall
+                Save-RtlOperationResult -Result $res -Operation uninstall -OperationId $Sync.OperationId
+                $Sync.Results = $res
+            } catch {
+                $Sync.Err = $_.Exception.Message
+                try {
+                    $leftovers = if ($res) { @($res.Leftovers) } else { @() }
+                    $res = New-RtlOperationResult -App $AppId -Status Failed -Reason $Sync.Err -Leftovers $leftovers -NextAction 'Retry removal; inspect the operation log. The completion record may not have been saved.'
+                    $Sync.Results = $res
+                    Save-RtlOperationResult -Result $res -Operation uninstall -OperationId $Sync.OperationId
+                } catch { $Sync.Err += '; ' + $_.Exception.Message }
+            } finally { $Sync.Done = $true }
+        })
+    $script:PassRs = $rs; $script:PassPs = $ps
+    $script:PassHandle = $ps.BeginInvoke()
     Show-TrayBalloon $label 'מסיר את ההתקנה...' 'Info'
+}
+
+function Show-UninstallDialog([string]$body, [string]$title, [string]$icon) {
+    [void][System.Windows.Forms.MessageBox]::Show($body, $title, 'OK', $icon)
+}
+function Show-UninstallResult($result, [string]$OperationId, [switch]$ReconcileAgent) {
+    $body = Format-RtlOperationResult -Result $result
+    $title = (Get-RtlAppLabel $result.App) + ' - תוצאת הסרה'
+    $icon = if ($result.Success) { 'Information' } else { 'Warning' }
+    # A modal completion remains readable after last-agent cleanup, unlike a balloon.
+    Show-UninstallDialog $body $title $icon
+    Invoke-AppAction $result.App {
+        if ($ReconcileAgent -and $result.Success) {
+            try {
+                $remaining = @(Get-RtlInstalledApps)
+                if ($remaining.Count -gt 0) { Register-RtlAgent }
+                else { Invoke-RtlAgentLastCleanup; $script:QuitAfterOperation = $true }
+            } catch {
+                $script:QuitAfterOperation = $false
+                $leftovers = @($_.Exception.Data['Leftovers'])
+                if (-not $leftovers -or -not $leftovers[0]) { $leftovers = @((Get-RtlManagementReceipt).leftovers) }
+                $partial = New-RtlOperationResult -App $result.App -Status Partial -Reason $_.Exception.Message -Leftovers $leftovers -NextAction 'Retry removal to finish background-agent cleanup.'
+                $partialId = [Guid]::NewGuid().ToString('N')
+                try { Save-RtlOperationResult -Result $partial -Operation uninstall -OperationId $partialId }
+                catch { $partial.Reason += '; completion record could not be saved: ' + $_.Exception.Message; $partialId = $null }
+                Show-UninstallResult $partial -OperationId $partialId
+                return
+            }
+        }
+        # Keep the completion pending across a crash or failure during agent cleanup.
+        if ($OperationId) { Acknowledge-RtlOperationResult -OperationId $OperationId }
+    }
+    Invoke-Reconcile -Force
+}
+
+function Show-PendingUninstallResults {
+    foreach ($id in @('codex', 'opencode', 'traycer', 't3code', 'grokbot', 'herdr')) {
+        $record = Get-RtlLastOperation -Profile (Get-RtlProfile $id)
+        if ($record -and $record.Operation -eq 'uninstall' -and -not $record.Acknowledged) {
+            Show-UninstallResult $record.Result -OperationId $record.OperationId -ReconcileAgent
+        }
+    }
 }
 function New-AppMenuItem([string]$text, [string]$id, [string]$action) {
     $mi = New-Object System.Windows.Forms.ToolStripMenuItem $text
@@ -441,19 +502,26 @@ function Start-TrayPass {
     $rs.SessionStateProxy.SetVariable('DoForce', [bool]$Force)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
-            . $LibPath
+            $ErrorActionPreference = 'Stop'
             $results = @{}
-            foreach ($id in $AppsArg) {
-                $r = @{ ok = $false; err = $null }
-                try {
-                    Set-RtlActiveApp $id | Out-Null
-                    if ($DoForce) { Invoke-CodexRtlUpdate -Force } else { Invoke-CodexRtlUpdate -Auto }
-                    $r.ok = $true
-                } catch { $r.err = $_.Exception.Message }
-                $results[$id] = $r
+            try {
+                . $LibPath
+                foreach ($id in $AppsArg) {
+                    $r = @{ ok = $false; err = $null }
+                    try {
+                        Set-RtlActiveApp $id | Out-Null
+                        $result = if ($DoForce) { Invoke-CodexRtlUpdate -Force } else { Invoke-CodexRtlUpdate -Auto }
+                        $r.ok = [bool]$result.Success
+                        if (-not $result.Success) { $r.err = Format-RtlOperationResult -Result $result }
+                    } catch { $r.err = $_.Exception.Message }
+                    $results[$id] = $r
+                }
+            } catch {
+                foreach ($id in $AppsArg) { $results[$id] = @{ok=$false;err=$_.Exception.Message} }
+            } finally {
+                $Sync.Results = $results
+                $Sync.Done = $true
             }
-            $Sync.Results = $results
-            $Sync.Done = $true
         })
     $script:PassRs = $rs; $script:PassPs = $ps
     $script:PassHandle = $ps.BeginInvoke()
@@ -489,14 +557,22 @@ $drain.Interval = 250
 $drain.Add_Tick({
         # A setup/uninstall/self-update elsewhere asked the tray to quit: exit cleanly so
         # no ghost NotifyIcon is left behind. Checked before anything else, every tick.
-        if (-not $script:Disposed -and $script:QuitEvent -and $script:QuitEvent.WaitOne(0)) { Invoke-TrayQuit; return }
+        $uninstallPending = $script:Sync.Busy -and $script:Sync.Op -eq 'uninstall'
+        if (-not $uninstallPending -and -not $script:Disposed -and $script:QuitEvent -and $script:QuitEvent.WaitOne(0)) { Invoke-TrayQuit; return }
         if (-not ($script:Sync.Busy -and $script:Sync.Done)) { return }
+        # MessageBox runs a nested message pump. Consume completion before any modal
+        # dialog so another timer tick cannot display or clean up the same result.
+        $script:Sync.Done = $false
         $op = $script:Sync.Op
+        try { if ($script:PassPs -and $script:PassHandle) { [void]$script:PassPs.EndInvoke($script:PassHandle) } } catch { $script:Sync.Err = $_.Exception.Message }
         try { if ($script:PassPs) { $script:PassPs.Dispose() } } catch {}
         try { if ($script:PassRs) { $script:PassRs.Dispose() } } catch {}
         $script:PassPs = $null; $script:PassRs = $null; $script:PassHandle = $null
         $err = $script:Sync.Err
-        if ($op -eq 'toolcheck' -or $op -eq 'toolinstall') {
+        if ($op -eq 'uninstall') {
+            if ($script:Sync.Results) { Show-UninstallResult $script:Sync.Results -OperationId $script:Sync.OperationId -ReconcileAgent }
+            else { [void][System.Windows.Forms.MessageBox]::Show(('ההסרה לא הושלמה. נסה/י שוב. ' + $err), 'Desktop RTL', 'OK', 'Warning') }
+        } elseif ($op -eq 'toolcheck' -or $op -eq 'toolinstall') {
             $info = $script:Sync['ToolInfo']
             if ($op -eq 'toolinstall') {
                 if (-not $err) {
@@ -528,7 +604,7 @@ $drain.Add_Tick({
                             # Failed apps are NOT requeued here; the next poll retries them.
                             if ($script:LastErr[$id] -ne $r.err) {
                                 $script:LastErr[$id] = $r.err
-                                Show-TrayBalloon ((Get-RtlAppLabel $id) + ' - עדכון נכשל') (Get-TrayError $r.err) 'Error'
+                                Show-TrayBalloon ((Get-RtlAppLabel $id) + ' - הפעולה לא הושלמה') (Get-TrayError $r.err) 'Warning'
                             }
                         }
                     }
@@ -536,6 +612,7 @@ $drain.Add_Tick({
             }
         }
         $script:Sync.Busy = $false
+        if ($script:QuitAfterOperation) { Invoke-TrayQuit; return }
         Update-TrayStatus
         # Replay work that arrived DURING the pass (triggers, not failures).
         if ($script:Pending.appIds.Count -gt 0 -or $script:Pending.force) {
@@ -580,7 +657,8 @@ function Update-TrayStatus {
                 'Update'        { 'עדכון זמין' }
                 'PatchUpgrade'  { 'עדכון תיקון' }
                 'Repair'        { 'דרוש תיקון' }
-                'CleanupPending' { 'יש להשלים הסרה' }
+                'VerificationPending' { 'האימות נכשל; דרוש תיקון' }
+                'CleanupPending' { 'הסרה חלקית; דרוש ניקוי' }
                 'SourceMissing' { 'המקור הוסר' }
                 'Blocked'       { 'נכשל, דרוש עדכון לכלי' }
                 'Fresh'         { 'לא מותקן' }
@@ -603,6 +681,7 @@ function Update-TrayStatus {
 $ni.Add_DoubleClick({ if ($script:Apps.Count -ge 1) { Invoke-AppAction $script:Apps[0] { [void](Start-RtlCopyApp) } } })
 
 function Invoke-TrayQuit {
+    if ($script:Sync.Busy -and $script:Sync.Op -eq 'uninstall') { $script:QuitAfterOperation = $true; return }
     $script:Disposed = $true
     try { $drain.Stop(); $poll.Stop(); $toolTimer.Stop(); $script:Debounce.Stop() } catch {}
     foreach ($w in $script:Fsws) { try { $w.EnableRaisingEvents = $false; $w.Dispose() } catch {} }
@@ -633,6 +712,8 @@ if ($SelfTest) {
 
 # Announce readiness (PID + deployed generation) for the installer/self-update supervisor.
 try { Write-RtlAgentReady -Generation (Read-RtlAgentGeneration) } catch {}
+Show-PendingUninstallResults
+if ($script:QuitAfterOperation) { Invoke-TrayQuit; return }
 
 $drain.Start(); $poll.Start(); $toolTimer.Start()
 Start-TrayPass -Apps $script:Apps                      # initial pass
