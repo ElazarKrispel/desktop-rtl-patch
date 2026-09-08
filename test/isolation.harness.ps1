@@ -16,6 +16,8 @@ try {
         { New-Object System.Threading.EventWaitHandle($false,[System.Threading.EventResetMode]::ManualReset,'Local\DesktopRtlTrayQuit') },
         { New-Object System.Threading.Mutex($false,'Local\DesktopRtlAgentSetup') },
         { New-Item -ItemType Directory -Path ($testRoot + '-sibling\forbidden') },
+        { Rename-Item -LiteralPath ($testRoot + '-sibling\forbidden') -NewName 'renamed' },
+        { Rename-Item -LiteralPath (Join-Path $testRoot 'ordinary') -NewName '..\outside-rename' },
         { Invoke-WebRequest 'https://example.invalid' }
     )
     foreach ($action in $denied) {

@@ -40,6 +40,7 @@ Observed AFTER:
 | Missing descendants, junction selected as root, sibling-prefix control | PASS: rejected |
 | Child junction before recursive removal, copy, mirror | PASS: rejected before filesystem operation |
 | Ordinary directory injection plus actual verifier | PASS |
+| Native Windows link-count guard on hardlinked state; recursive rename with child junction | PASS: rejected |
 | Node direct outside, junction ancestor, hardlinked binary | PASS: rejected, external sentinels unchanged |
 | Node archive junction and backup destination junction | PASS: rejected, original archive preserved |
 | Ordinary archive with hostile legacy temporary hardlink | PASS: archive updated, external temporary sentinel unchanged |
@@ -50,7 +51,7 @@ The first two normal renderer test runs exposed fixture mistakes (missing config
 
 - Deletion/mirror scenarios are preventative rejection tests. They do **not** establish that every prior PowerShell/robocopy version actually followed a junction during deletion.
 - The checks are preflight and immediate rechecks. A malicious same-user process can still replace an ancestor between a check and an OS operation. **Concurrent path replacement is NOT RUN and no race-proof claim is made.** A stronger adversarial guarantee would require handle-relative operations or access-controlled staging and a reviewed native implementation.
-- Full synthetic installation and rollback regression depends on the PR-00 isolated runner; real installation/uninstall and real shortcut/Registry integration remain NOT RUN without specific authorization.
+- Integration with PR-00: `test/Run-Tests.ps1` passed 19 PS5.1 parse/encoding checks, two Node syntax checks, 16 isolation assertions and 162 renderer/lifecycle assertions. The broad suite explicitly models native link metadata only for its ordinary fixture files; the dedicated path harness tests the actual Windows helper. A Rename-Item trap checks both source and resolved destination. These synthetic cases are not full app E2E; real installation/uninstall and real shortcut/Registry integration remain NOT RUN without specific authorization.
 - UNC or redirected managed roots are intentionally refused. No fallback traverses them. Ordinary Unicode local paths remain supported.
 - Packaging must include the helper. A partial old runtime that lacks it must fail to load, not silently downgrade boundary protection.
 
