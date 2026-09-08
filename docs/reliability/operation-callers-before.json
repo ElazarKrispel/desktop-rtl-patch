@@ -8,7 +8,7 @@
                     "Install-DesktopRtlGui.ps1":  "0A4242ACF4E440DE977ACACF19CEA2FF88D79AD445A44722A664ADCC35CD2789",
                     "Install-DesktopRtl.ps1":  "380838618D1E2CE205FBE8FF6BEDDE55AE75DBDB6FFB26BBB8FFFDDA5E126667"
                 },
-    "Isolation":  "Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Two actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.",
+    "Isolation":  "Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.",
     "Cases":  [
                   {
                       "Case":  "Start-Install:Succeeded",
@@ -346,11 +346,21 @@
                       "Reason":  "No managed completion function"
                   },
                   {
-                      "Case":  "actual-runspace:Partial",
+                      "Case":  "modal-completion-consumed-once",
+                      "Passed":  false,
+                      "DialogCalls":  0,
+                      "Error":  "Index operation failed; the array index evaluated to null."
+                  },
+                  {
+                      "Case":  "actual-runspace:none",
                       "Passed":  false
                   },
                   {
-                      "Case":  "actual-runspace:Failed",
+                      "Case":  "actual-runspace:throw",
+                      "Passed":  false
+                  },
+                  {
+                      "Case":  "actual-runspace:nonterminating",
                       "Passed":  false
                   },
                   {

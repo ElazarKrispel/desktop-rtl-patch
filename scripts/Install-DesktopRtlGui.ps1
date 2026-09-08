@@ -371,6 +371,7 @@ function Start-Install {
     $rs.SessionStateProxy.SetVariable('appId', $script:AppId)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
+            $ErrorActionPreference = 'Stop'
             try {
                 . $libPath
                 Set-RtlActiveApp $appId
@@ -419,6 +420,7 @@ function Start-Uninstall {
     $rs.SessionStateProxy.SetVariable('appId', $script:AppId)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
+            $ErrorActionPreference = 'Stop'
             try {
                 . $libPath
                 Set-RtlActiveApp $appId

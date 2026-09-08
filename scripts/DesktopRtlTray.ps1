@@ -287,6 +287,7 @@ function Start-AppUninstall([string]$id) {
     $rs.SessionStateProxy.SetVariable('AppId', $id)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
+            $ErrorActionPreference = 'Stop'
             try {
                 . $LibPath
                 Set-RtlActiveApp $AppId | Out-Null
@@ -318,12 +319,25 @@ function Show-UninstallResult($result, [string]$OperationId, [switch]$ReconcileA
     # A modal completion remains readable after last-agent cleanup, unlike a balloon.
     Show-UninstallDialog $body $title $icon
     Invoke-AppAction $result.App {
-        if ($OperationId) { Acknowledge-RtlOperationResult -OperationId $OperationId }
         if ($ReconcileAgent -and $result.Success) {
-            $remaining = @(Get-RtlInstalledApps)
-            if ($remaining.Count -gt 0) { Register-RtlAgent }
-            else { Invoke-RtlAgentLastCleanup; $script:QuitAfterOperation = $true }
+            try {
+                $remaining = @(Get-RtlInstalledApps)
+                if ($remaining.Count -gt 0) { Register-RtlAgent }
+                else { Invoke-RtlAgentLastCleanup; $script:QuitAfterOperation = $true }
+            } catch {
+                $script:QuitAfterOperation = $false
+                $leftovers = @($_.Exception.Data['Leftovers'])
+                if (-not $leftovers -or -not $leftovers[0]) { $leftovers = @((Get-RtlManagementReceipt).leftovers) }
+                $partial = New-RtlOperationResult -App $result.App -Status Partial -Reason $_.Exception.Message -Leftovers $leftovers -NextAction 'Retry removal to finish background-agent cleanup.'
+                $partialId = [Guid]::NewGuid().ToString('N')
+                try { Save-RtlOperationResult -Result $partial -Operation uninstall -OperationId $partialId }
+                catch { $partial.Reason += '; completion record could not be saved: ' + $_.Exception.Message; $partialId = $null }
+                Show-UninstallResult $partial -OperationId $partialId
+                return
+            }
         }
+        # Keep the completion pending across a crash or failure during agent cleanup.
+        if ($OperationId) { Acknowledge-RtlOperationResult -OperationId $OperationId }
     }
     Invoke-Reconcile -Force
 }
@@ -488,6 +502,7 @@ function Start-TrayPass {
     $rs.SessionStateProxy.SetVariable('DoForce', [bool]$Force)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
+            $ErrorActionPreference = 'Stop'
             $results = @{}
             try {
                 . $LibPath
@@ -545,6 +560,9 @@ $drain.Add_Tick({
         $uninstallPending = $script:Sync.Busy -and $script:Sync.Op -eq 'uninstall'
         if (-not $uninstallPending -and -not $script:Disposed -and $script:QuitEvent -and $script:QuitEvent.WaitOne(0)) { Invoke-TrayQuit; return }
         if (-not ($script:Sync.Busy -and $script:Sync.Done)) { return }
+        # MessageBox runs a nested message pump. Consume completion before any modal
+        # dialog so another timer tick cannot display or clean up the same result.
+        $script:Sync.Done = $false
         $op = $script:Sync.Op
         try { if ($script:PassPs -and $script:PassHandle) { [void]$script:PassPs.EndInvoke($script:PassHandle) } } catch { $script:Sync.Err = $_.Exception.Message }
         try { if ($script:PassPs) { $script:PassPs.Dispose() } } catch {}

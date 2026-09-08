@@ -2,13 +2,13 @@
     "PowerShell":  "5.1.26100.9168",
     "Scripts":  {
                     "Uninstall-DesktopRtl.ps1":  "C60C02D97C7E7A41ACBB5F8EB4FA053B128003345215997A18A53484210F89FE",
-                    "DesktopRtlTray.ps1":  "988029133EBEB51E89A18BA05C9227496BE8C54F9384E33BB979B95F04D43259",
+                    "DesktopRtlTray.ps1":  "8FBEF3C0E5908EBD4CC3E4A7EF8AAF8C46F88679E3705B77CCB3B1EF53301E66",
                     "Update-DesktopRtl.ps1":  "266B99B53F92971CDDAB7E20F6A74C95392C141C86048FF8F09EF0810094F68B",
                     "DesktopRtlSettings.ps1":  "8E39D873276C4FBBBE7C654EDD5ACA27E070200C679CAEDA819649DCD843A8F0",
-                    "Install-DesktopRtlGui.ps1":  "DC0DC092AD62B23FE1923212DFA46B62CA41F4DC26E5ED051892A3F8E56F35AE",
+                    "Install-DesktopRtlGui.ps1":  "6FBFFD99DF617E98661E0B3A002B1199AFF4416C84AD9DB2C5030BA41C1B9591",
                     "Install-DesktopRtl.ps1":  "58440BE8FB27203F600370DCC0704378329D34B6DE81D18B528292B6396AE268"
                 },
-    "Isolation":  "Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Two actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.",
+    "Isolation":  "Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.",
     "Cases":  [
                   {
                       "Case":  "Start-Install:Succeeded",
@@ -343,7 +343,7 @@
                   {
                       "Case":  "completion-order:True",
                       "Passed":  true,
-                      "Events":  "dialog,ack:expected-id,cleanup"
+                      "Events":  "dialog,cleanup,ack:expected-id"
                   },
                   {
                       "Case":  "completion-order:False",
@@ -351,11 +351,26 @@
                       "Events":  "dialog,ack:expected-id"
                   },
                   {
-                      "Case":  "actual-runspace:Partial",
+                      "Case":  "cleanup-failure-reports-partial",
+                      "Passed":  true,
+                      "Events":  "dialog,cleanup,saved,dialog,ack:0c15e33d2ac44215b1431750b44bcd82"
+                  },
+                  {
+                      "Case":  "modal-completion-consumed-once",
+                      "Passed":  true,
+                      "DialogCalls":  1,
+                      "Error":  null
+                  },
+                  {
+                      "Case":  "actual-runspace:none",
                       "Passed":  true
                   },
                   {
-                      "Case":  "actual-runspace:Failed",
+                      "Case":  "actual-runspace:throw",
+                      "Passed":  true
+                  },
+                  {
+                      "Case":  "actual-runspace:nonterminating",
                       "Passed":  true
                   },
                   {

@@ -15,12 +15,18 @@ produce success or install the agent. CLI operations return the shared exit code
 Uninstall callers persist the outcome before agent cleanup. Unsuccessful removal
 leaves the agent available. Tray removal uses a managed background runspace;
 the tray waits for its actual completion, then shows a modal result containing
-status, reason, leftover paths and the next action. Only after acknowledgment may
-last-agent cleanup run. A running copy is not stopped implicitly; the returned
+status, reason, leftover paths and the next action. Only after the user dismisses
+that dialog may last-agent cleanup run. The durable acknowledgment follows
+successful agent reconciliation, leaving a retryable record if cleanup is
+interrupted. If agent cleanup fails, a new Partial result is saved and displayed;
+the original success is not acknowledged. A running copy is not stopped implicitly; the returned
 result tells the user to close it. A busy tray explicitly says removal has not
 started. A completion-record failure is reported as Failed, retains leftover
 details and prevents agent teardown.
 
+The tray consumes each completed worker once before showing a modal dialog,
+preventing nested timer ticks from processing the same result again. Operation
+workers set terminating error handling explicitly in their own runspaces.
 The tray persists a unique operation ID and acknowledges that ID only. Startup
 checks all known profiles for unacknowledged uninstall results, including profiles
 no longer considered installed. Graceful tray quit requests wait until an active
@@ -40,22 +46,26 @@ repository root. `-RepoRoot` supports a separate baseline checkout and
 `-ResultPath` records JSON. The test copies only CLI scripts into a newly created
 synthetic fixture directory. A stub library supplies engine results, lifecycle,
 persistence and dialog boundaries. GUI/tray worker bodies are obtained from the
-actual source AST and executed without constructing windows. Two additional
+actual source AST and executed without constructing windows. Three additional
 cases use actual PowerShell runspaces with that same synthetic library.
 
-- [Baseline evidence](operation-callers-before.json): 19/62 passed, 43 failed.
+- [Baseline evidence](operation-callers-before.json): 19/64 passed, 45 failed.
   Missing managed completion is recorded as a failed requirement; these entries
   are not claims that the old hidden uninstall process ran in the test.
-- [After, Windows PowerShell 5.1](operation-callers-after.json): 63/63 passed.
-- [After, PowerShell 7.6.5](operation-callers-after-ps7.json): 63/63 passed.
+- [After, Windows PowerShell 5.1](operation-callers-after.json): 66/66 passed.
+- [After, PowerShell 7.6.5](operation-callers-after-ps7.json): 66/66 passed.
 
 Cases cover the seven result statuses in each consumer, worker exceptions,
 settings fallback, durable-save failure with leftover preservation, and dialog
-then acknowledgment then cleanup ordering. The actual GUI button-mapping function
+then cleanup then acknowledgment ordering. An injected cleanup exception produces
+a second Partial dialog and acknowledges only its new ID. A recursive invocation
+of the actual drain callback models the modal message pump and consumes the
+completion once. These are isolated flow tests, not a Windows crash test.
+The actual GUI button-mapping function
 also runs against three plain-object status fixtures, including a managed receipt
 without an executable or source. Script hashes and runtime versions
 are recorded. The baseline has one missing-completion entry where the fixed
-version runs two concrete completion-order cases.
+version runs two concrete completion-order cases plus cleanup-failure reporting.
 
 NOT RUN: real GUI interaction; startup notifications after a Windows restart;
 real Registry, shortcuts, named events, process stopping, filesystem removal,
