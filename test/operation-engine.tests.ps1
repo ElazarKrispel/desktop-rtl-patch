@@ -11,6 +11,7 @@ $errs=$null
 $ast=[Management.Automation.Language.Parser]::ParseInput($baselineText,[ref]$null,[ref]$errs)
 if ($errs.Count) { throw 'Baseline parse failed.' }
 $baseline=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-CodexRtlUpdate'},$true).Extent.Text
+$baselineCleanup=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-RtlAgentLastCleanup'},$true).Extent.Text
 . (Join-Path $PSScriptRoot 'isolated-test-support.ps1')
 $null=Initialize-RtlTestSandbox -RepositoryRoot $repo
 $script:Checks=0
@@ -216,6 +217,38 @@ try {
  Reset-Case 'result-app' 'codex'
  $r=New-RtlOperationResult -Status Failed -Reason 'fixture' -App 'herdr'
  Check ($r.App -eq 'herdr' -and $script:ActiveProfile.Id -eq 'codex') 'explicit result App retains target identity independently of active profile'
+ & {
+  # Use the ordinary redirected profile so actual Get-RtlInstalledApps can rediscover it.
+  Set-RtlActiveApp 'traycer'
+  function Invoke-RtlWithSetupMutex {param($Body) & $Body}
+  function Unregister-RtlAgent {}
+  function Register-RtlAgent {}
+  function Write-RtlAgentLog {param($Message)}
+  Fixture $script:ConfigFile '{"fixture":"retain user preference"}'
+  $locked=Join-Path $script:AgentBinDir 'z-retained-runtime.dat'
+  Fixture $locked 'locked neutral runtime'
+  $held=[IO.File]::Open($locked,'Open','Read','None')
+  try {
+   & {
+    . ([scriptblock]::Create($baselineCleanup))
+    $threw=$false; try {Invoke-RtlAgentLastCleanup}catch{$threw=$true}
+    Check (-not $threw -and [IO.File]::Exists($locked)) 'baseline agent cleanup silently returns despite real locked runtime leftover'
+   }
+   $failure=$null; try {Invoke-RtlAgentLastCleanup}catch{$failure=$_.Exception}
+   Check ($failure -and $failure.Message -match '\[PARTIAL\]') 'current agent cleanup exposes locked neutral runtime as Partial exception'
+   Check (@($failure.Data['Leftovers']) -contains $script:AgentBinDir) 'agent cleanup exception identifies failed runtime root'
+   Check ((Get-RtlManagementReceipt).phase -eq 'CleanupPending') 'failed neutral cleanup records selected app cleanup receipt'
+   $record=Get-RtlLastOperation
+   Check ($record.Result.Status -eq 'Partial' -and -not $record.Result.Success) 'failed neutral cleanup durably records truthful Partial result'
+   Check (@(Get-RtlInstalledApps) -contains 'traycer') 'actual managed-app enumeration rediscovers pending neutral cleanup'
+  } finally {$held.Dispose()}
+  $removed=Invoke-CodexRtlUninstall
+  Check $removed.Success 'retry completes selected app cleanup after runtime lock released'
+  Invoke-RtlAgentLastCleanup
+  Check (-not [IO.Directory]::Exists($script:AgentBinDir)) 'retry actually removes neutral runtime after file lock release'
+  Check (-not (@(Get-RtlInstalledApps) -contains 'traycer')) 'completed cleanup is no longer managed'
+  Check ([IO.File]::ReadAllText($script:ConfigFile) -eq '{"fixture":"retain user preference"}') 'neutral cleanup retry preserves user configuration'
+ }
  Reset-Case 'operation-record'
  Save-RtlOperationResult -Result (New-RtlOperationResult -Status Partial -Leftovers @('fixture')) -Operation uninstall -OperationId 'first'
  Check ((Get-RtlLastOperation).Result.Status -eq 'Partial') 'result survives a fresh record read'

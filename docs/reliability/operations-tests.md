@@ -6,9 +6,9 @@ Run from a Windows checkout with Windows PowerShell 5.1 and Git:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File test\operation-engine.tests.ps1
 ```
 
-The historical comparison requires commit `02cc70a8b750de4bc88b740cf8a64f292a5c0325` in local Git history. Missing history fails explicitly. The script parses that commit and extracts only its original update function. It does not load or install the historical product. The current product library is loaded against the shared isolated test environment.
+The historical comparison requires commit `02cc70a8b750de4bc88b740cf8a64f292a5c0325` in local Git history. Missing history fails explicitly. The script parses that commit and extracts only its original update and last-agent-cleanup functions. It does not load or install the historical product. The current product library is loaded against the shared isolated test environment.
 
-Validation on 2026-09-08: **42 assertions passed** using Windows PowerShell 5.1.26100.9168 against the integrated working tree. This includes reproducing the historical defects as expected baseline observations.
+Validation on 2026-09-08: **52 assertions passed** using Windows PowerShell 5.1.26100.9168 against the integrated working tree. This includes reproducing the historical defects as expected baseline observations.
 
 ## Evidence boundaries
 
@@ -23,6 +23,7 @@ Validation on 2026-09-08: **42 assertions passed** using Windows PowerShell 5.1.
 | Native binary proof | Real fixture executable digest and a real file lock that makes its digest unavailable | Version/build verifier supplied by a stub; no Herdr executable or version command runs |
 | Deferred preparation | Actual full update dispatcher and app-specific deferral control flow | Electron stage verifier and running predicate supplied by stubs; Herdr build replaced by a trap |
 | Pending settings and result identity | Current ASAR fast path returns Deferred without writing state when settings are pending; explicit App identity survives a different active profile | Running predicate and forbidden downstream calls supplied by stubs |
+| Last-agent cleanup and retry | Actual exclusive lock on a synthetic neutral-runtime file; baseline silently returns, current function throws Partial, persists cleanup receipt/result, actual managed enumeration rediscovers it; release and retry remove runtime while retaining user config | Setup-mutex wrapper executes synchronously; agent registration and unregistration are mocked, with no Registry/process effects |
 | Durable result acknowledgement | Actual write/read and exact-operation acknowledgement, stale acknowledgement cannot mark a newer result | Sequential stale-message simulation; not a concurrent cross-process race proof |
 
 The shared isolation guard rejects unexpected process, Registry, network and named production event calls, including swallowed exceptions. A local rename wrapper validates source and destination under the unique fixture directory. The read-only file-link metadata helper is compiled before the generic Add-Type trap, and checks only the test script during initialization. Ordinary product path checks then use that type. Temporary trees are new per invocation and are removed only after validating their resolved root and descendants. No prior audit fixture is cleaned up.
