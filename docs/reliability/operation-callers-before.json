@@ -1,0 +1,357 @@
+{
+    "PowerShell":  "5.1.26100.9168",
+    "Scripts":  {
+                    "Uninstall-DesktopRtl.ps1":  "6C065C05962FF80E34193533D5E3179C54213AE7ECE47EF13A24A41D1C08882B",
+                    "DesktopRtlTray.ps1":  "D792ECC8639275C4A6C8DC0D2BA061634441A7AC855F985F793D94087DB33723",
+                    "Update-DesktopRtl.ps1":  "DC9ED52192C8D461448E937EC8CFA0020E5847FCB32C5320832EF1FBE351EA7D",
+                    "DesktopRtlSettings.ps1":  "53718B1F15E61C227991AEFA2472756E6B6BD2F85E32E6D7E2F20B72D28CED10",
+                    "Install-DesktopRtlGui.ps1":  "0A4242ACF4E440DE977ACACF19CEA2FF88D79AD445A44722A664ADCC35CD2789",
+                    "Install-DesktopRtl.ps1":  "380838618D1E2CE205FBE8FF6BEDDE55AE75DBDB6FFB26BBB8FFFDDA5E126667"
+                },
+    "Isolation":  "Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Two actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.",
+    "Cases":  [
+                  {
+                      "Case":  "Start-Install:Succeeded",
+                      "Passed":  true,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Succeeded",
+                      "Passed":  true,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Succeeded",
+                      "Passed":  true,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Succeeded",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:Succeeded",
+                      "Passed":  true,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:Succeeded",
+                      "Passed":  true,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:Succeeded",
+                      "Passed":  true,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Start-Install:AlreadyCurrent",
+                      "Passed":  true,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:AlreadyCurrent",
+                      "Passed":  true,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:AlreadyCurrent",
+                      "Passed":  true,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:AlreadyCurrent",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:AlreadyCurrent",
+                      "Passed":  true,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:AlreadyCurrent",
+                      "Passed":  true,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:AlreadyCurrent",
+                      "Passed":  true,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Start-Install:Deferred",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Deferred",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Deferred",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Deferred",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:Deferred",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:Deferred",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:Deferred",
+                      "Passed":  false,
+                      "ExitCode":  1,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Start-Install:Busy",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Busy",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Busy",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Busy",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:Busy",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:Busy",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:Busy",
+                      "Passed":  false,
+                      "ExitCode":  1,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Start-Install:Blocked",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Blocked",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Blocked",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Blocked",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:Blocked",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:Blocked",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:Blocked",
+                      "Passed":  false,
+                      "ExitCode":  1,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Start-Install:Partial",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Partial",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Partial",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Partial",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:Partial",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:Partial",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:Partial",
+                      "Passed":  false,
+                      "ExitCode":  1,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Start-Install:Failed",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Failed",
+                      "Passed":  false,
+                      "AgentCalls":  1,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Failed",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Failed",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Install-DesktopRtl.ps1:Failed",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  1
+                  },
+                  {
+                      "Case":  "Update-DesktopRtl.ps1:Failed",
+                      "Passed":  false,
+                      "ExitCode":  0,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Uninstall-DesktopRtl.ps1:Failed",
+                      "Passed":  true,
+                      "ExitCode":  1,
+                      "AgentCalls":  0
+                  },
+                  {
+                      "Case":  "Start-Install:Thrown",
+                      "Passed":  true,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-Uninstall:Thrown",
+                      "Passed":  true,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-TrayPass:Thrown",
+                      "Passed":  true,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "Start-AppUninstall:Thrown",
+                      "Passed":  false,
+                      "AgentCalls":  0,
+                      "Saved":  0
+                  },
+                  {
+                      "Case":  "settings-fallback:True",
+                      "Passed":  true
+                  },
+                  {
+                      "Case":  "settings-fallback:False",
+                      "Passed":  false
+                  },
+                  {
+                      "Case":  "uninstall-save-failure",
+                      "Passed":  false
+                  },
+                  {
+                      "Case":  "completion-order",
+                      "Passed":  false,
+                      "Reason":  "No managed completion function"
+                  },
+                  {
+                      "Case":  "actual-runspace:Partial",
+                      "Passed":  false
+                  },
+                  {
+                      "Case":  "actual-runspace:Failed",
+                      "Passed":  false
+                  }
+              ]
+}

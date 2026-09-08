@@ -15,6 +15,10 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $scriptDir 'lib\desktop-rtl-lib.ps1')
 Set-RtlActiveApp $App
 Start-RtlInstallLog 'update' | Out-Null
-Invoke-CodexRtlUpdate -Force:$Force -AllowExternalNodeFallback:$AllowExternalNodeFallback
+$result = Invoke-CodexRtlUpdate -Force:$Force -AllowExternalNodeFallback:$AllowExternalNodeFallback
+if (-not $result.Success) {
+    Write-Host (Format-RtlOperationResult -Result $result) -ForegroundColor Yellow
+    exit (Get-RtlOperationExitCode -Result $result)
+}
 $state = Read-RtlState
 if ($state) { Write-Host "[OK] $($script:ActiveProfile.DisplayName) (RTL) at v$($state.codexVersion) (mode=$($state.mode))." -ForegroundColor Green }

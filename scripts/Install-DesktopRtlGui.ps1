@@ -294,6 +294,11 @@ function Update-Buttons {
         return
     }
     switch ($st.State) {
+        'VerificationPending' {
+            $status.Text = 'עותק ה-RTL לא עבר אימות. סגור/י אותו ובחר/י תיקון לפני פתיחה נוספת.'
+            $btnPrimary.Text = 'תקן ואמת'; $btnPrimary.Tag = 'install'
+            $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
+        }
         'Blocked' {
             $status.Text = "העדכון לגרסה החדשה של $appName נכשל ($($st.BlockedError)). ייתכן שצריך עדכון לכלי ה-RTL. אפשר לנסות שוב."
             $btnPrimary.Text = 'נסה שוב'; $btnPrimary.Tag = 'install'
@@ -366,14 +371,15 @@ function Start-Install {
     $rs.SessionStateProxy.SetVariable('appId', $script:AppId)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
-            . $libPath
-            Set-RtlActiveApp $appId
-            $script:StepSink = { param($k, $p, $m) $sync.StepKey = $k; $sync.StepPct = $p; $sync.StepMarquee = $m }
-            $script:UiSink = { param($msg) [void]$sync.Lines.Add($msg) }
             try {
+                . $libPath
+                Set-RtlActiveApp $appId
+                $script:StepSink = { param($k, $p, $m) $sync.StepKey = $k; $sync.StepPct = $p; $sync.StepMarquee = $m }
+                $script:UiSink = { param($msg) [void]$sync.Lines.Add($msg) }
                 Start-RtlInstallLog 'install' | Out-Null
                 Write-RtlUi 'מתחיל בהתקנה...'
-                Invoke-CodexRtlUpdate -Force
+                $res = Invoke-CodexRtlUpdate -Force
+                if (-not $res.Success) { throw (Format-RtlOperationResult -Result $res) }
                 Write-RtlUi 'מגדיר את סוכן הרקע המאוחד...'
                 # One unified agent (a single tray) for every installed app.
                 Install-RtlAgent -RepoRoot $repoRoot
@@ -413,21 +419,20 @@ function Start-Uninstall {
     $rs.SessionStateProxy.SetVariable('appId', $script:AppId)
     $ps = [powershell]::Create(); $ps.Runspace = $rs
     [void]$ps.AddScript({
-            . $libPath
-            Set-RtlActiveApp $appId
-            $script:UiSink = { param($msg) [void]$sync.Lines.Add($msg) }
             try {
+                . $libPath
+                Set-RtlActiveApp $appId
+                $script:UiSink = { param($msg) [void]$sync.Lines.Add($msg) }
                 Start-RtlInstallLog 'uninstall' | Out-Null
                 Write-RtlUi 'מסיר את ההתקנה...'
                 $res = Invoke-CodexRtlUninstall
+                Save-RtlOperationResult -Result $res -Operation uninstall
+                if (-not $res.Success) { throw (Format-RtlOperationResult -Result $res) }
                 # Keep the unified agent while any app remains; tear it down only when
                 # none remain and cleanup was certain.
                 $remaining = @(Get-RtlInstalledApps)
                 if ($remaining.Count -gt 0) { Register-RtlAgent; Restart-RtlAgentTray }
-                elseif ($res.Certain) { Invoke-RtlAgentLastCleanup }
-                else { Restart-RtlAgentTray }   # partial: leave the agent running so a retry is possible
-                # A partial removal must report a real failure, not "done".
-                if (-not $res.Certain) { throw ('[PARTIAL] ' + (@($res.Leftovers) -join ', ')) }
+                elseif ($res.Success) { Invoke-RtlAgentLastCleanup }
                 $sync.Ok = $true
             }
             catch { $sync.Err = $_.Exception.Message }
