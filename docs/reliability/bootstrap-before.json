@@ -1,0 +1,271 @@
+{
+    "PowerShell":  "5.1.26100.9168",
+    "ScriptSHA256":  "B7FF377C0AB56C9FA3A6C97AB29294178654CED1F458E8838D62D6A4DF7FB0DA",
+    "Isolation":  "Synthetic bytes; mocked network, extraction and GUI/CLI launch; no real installer execution.",
+    "Cases":  [
+                  {
+                      "Case":  "checksum-unavailable",
+                      "Mode":  "gui",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  1,
+                                    "Download":  3
+                                }
+                  },
+                  {
+                      "Case":  "asset-unavailable",
+                      "Mode":  "gui",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  1,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "empty-checksum",
+                      "Mode":  "gui",
+                      "Passed":  true,
+                      "Error":  "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page.",
+                      "Calls":  {
+                                    "Launch":  0,
+                                    "Extract":  0,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "wrong-hash",
+                      "Mode":  "gui",
+                      "Passed":  true,
+                      "Error":  "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page.",
+                      "Calls":  {
+                                    "Launch":  0,
+                                    "Extract":  0,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "wrong-filename",
+                      "Mode":  "gui",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "malformed-checksum",
+                      "Mode":  "gui",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "duplicate-entry",
+                      "Mode":  "gui",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid",
+                      "Mode":  "gui",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid-byte-content",
+                      "Mode":  "gui",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid-binary-marker",
+                      "Mode":  "gui",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid-extra-entry",
+                      "Mode":  "gui",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "checksum-unavailable",
+                      "Mode":  "cli",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  1,
+                                    "Download":  3
+                                }
+                  },
+                  {
+                      "Case":  "asset-unavailable",
+                      "Mode":  "cli",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  1,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "empty-checksum",
+                      "Mode":  "cli",
+                      "Passed":  true,
+                      "Error":  "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page.",
+                      "Calls":  {
+                                    "Launch":  0,
+                                    "Extract":  0,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "wrong-hash",
+                      "Mode":  "cli",
+                      "Passed":  true,
+                      "Error":  "[INTEGRITY] The download did not match the published SHA-256 checksum. Nothing was installed. Please try again or download from the Releases page.",
+                      "Calls":  {
+                                    "Launch":  0,
+                                    "Extract":  0,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "wrong-filename",
+                      "Mode":  "cli",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "malformed-checksum",
+                      "Mode":  "cli",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "duplicate-entry",
+                      "Mode":  "cli",
+                      "Passed":  false,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid",
+                      "Mode":  "cli",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid-byte-content",
+                      "Mode":  "cli",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid-binary-marker",
+                      "Mode":  "cli",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  },
+                  {
+                      "Case":  "valid-extra-entry",
+                      "Mode":  "cli",
+                      "Passed":  true,
+                      "Error":  null,
+                      "Calls":  {
+                                    "Launch":  1,
+                                    "Extract":  1,
+                                    "Fallback":  0,
+                                    "Download":  2
+                                }
+                  }
+              ]
+}
