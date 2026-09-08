@@ -17,6 +17,7 @@
 # is safe regardless of how Windows PowerShell 5.1 decodes the file. The Hebrew error
 # messages live in the sibling desktop-rtl-errors.ps1 (UTF-8 BOM), dot-sourced below so
 # every consumer (GUI, tray, settings, CLI) shares one Get-RtlHebrewError.
+. (Join-Path $PSScriptRoot 'desktop-rtl-paths.ps1')
 $script:_errPath = Join-Path $PSScriptRoot 'desktop-rtl-errors.ps1'
 if (Test-Path $script:_errPath) { . $script:_errPath }
 # Herdr is a native Rust TUI, not an Electron app, so its whole install path differs
@@ -101,7 +102,7 @@ function Start-RtlInstallLog {
     # technical log goes to this file (and the rolling rtl.log); the GUI shows only
     # friendly lines via Write-RtlUi / Set-RtlStep.
     param([string]$Kind = 'install')
-    if (-not (Test-Path $script:LogsDir)) { New-Item -ItemType Directory -Force -Path $script:LogsDir | Out-Null }
+    if (-not (Test-Path $script:LogsDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:LogsDir)) | Out-Null }
     $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
     $script:InstallLogFile = Join-Path $script:LogsDir ("{0}-{1}.log" -f $Kind, $ts)
     return $script:InstallLogFile
@@ -116,9 +117,9 @@ function Write-RtlLog {
         # app that was merely enumerated. Whoever needs the folder creates it explicitly
         # (Enter-RtlLock, Start-RtlInstallLog, Write-RtlState).
         if (-not (Test-Path $script:StateDir)) { return }
-        if ((Test-Path $script:LogFile) -and (Get-Item $script:LogFile).Length -gt 1MB) { Move-Item $script:LogFile "$($script:LogFile).old" -Force }
-        Add-Content -LiteralPath $script:LogFile -Value $line -Encoding UTF8
-        if ($script:InstallLogFile) { Add-Content -LiteralPath $script:InstallLogFile -Value $line -Encoding UTF8 }
+        if ((Test-Path $script:LogFile) -and (Get-Item $script:LogFile).Length -gt 1MB) { Move-Item (Get-RtlSafePath -Path ($script:LogFile)) (Get-RtlSafePath -Path ("$($script:LogFile).old")) -Force }
+        Add-Content -LiteralPath (Get-RtlSafePath -Path ($script:LogFile)) -Value $line -Encoding UTF8
+        if ($script:InstallLogFile) { Add-Content -LiteralPath (Get-RtlSafePath -Path ($script:InstallLogFile)) -Value $line -Encoding UTF8 }
     } catch {}
 }
 
@@ -177,7 +178,7 @@ function Read-RtlState {
 function Write-RtlState {
     # State schema v1. installedAt is preserved across updates; lastUpdatedAt is bumped.
     param([hashtable]$State)
-    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
     $existing = Read-RtlState
     $now = (Get-Date).ToString('o')
     $installedAt = if ($existing -and $existing.installedAt) { $existing.installedAt } else { $now }
@@ -195,7 +196,7 @@ function Write-RtlState {
         installedAt     = $installedAt
         lastUpdatedAt   = $now
     }
-    [System.IO.File]::WriteAllText($script:StateFile, (([pscustomobject]$full) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+    [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($script:StateFile)), (([pscustomobject]$full) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
     Write-RtlLog "State written: $($script:StateFile) (sig=$($State.sourceSignature))"
 }
 
@@ -203,8 +204,8 @@ function Write-RtlState {
 
 function Enter-RtlLock {
     try {
-        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
-        $script:LockStream = [System.IO.File]::Open($script:LockFile, 'OpenOrCreate', 'ReadWrite', 'None')
+        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
+        $script:LockStream = [System.IO.File]::Open((Get-RtlSafePath -Path ($script:LockFile)), 'OpenOrCreate', 'ReadWrite', 'None')
         return $true
     } catch { return $false }
 }
@@ -661,6 +662,7 @@ function Test-RtlElevated {
 # pipeline). Every engine write path calls this before touching a file.
 function Assert-RtlWriteAllowed {
     param([Parameter(Mandatory)]$Profile, [Parameter(Mandatory)][string]$Path, [switch]$InPlaceOptIn)
+    Assert-RtlSafePath -Path $Path
     $full = [System.IO.Path]::GetFullPath($Path)
     $allowed = @(
         ([System.IO.Path]::GetFullPath($Profile.CopyRoot).TrimEnd('\') + '\'),
@@ -745,9 +747,9 @@ function Read-RtlConfig {
 
 function Write-RtlConfig {
     param($Config)
-    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
     $json = ([pscustomobject]$Config) | ConvertTo-Json -Depth 6
-    [System.IO.File]::WriteAllText($script:ConfigFile, $json, (New-Object System.Text.UTF8Encoding $false))
+    [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($script:ConfigFile)), $json, (New-Object System.Text.UTF8Encoding $false))
     Write-RtlLog "Config written: $($script:ConfigFile)"
 }
 
@@ -762,7 +764,7 @@ function Build-RtlConfigAsset {
     $json = ([pscustomobject]$appCfg) | ConvertTo-Json -Depth 6 -Compress
     $js = 'window.__codexRtlConfig = ' + $json + ';'
     $tmp = Join-Path $env:TEMP ('desktop-rtl-config-' + [Guid]::NewGuid().ToString('N') + '.js')
-    [System.IO.File]::WriteAllText($tmp, $js, (New-Object System.Text.UTF8Encoding $false))
+    [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($tmp)), $js, (New-Object System.Text.UTF8Encoding $false))
     return $tmp
 }
 
@@ -810,8 +812,8 @@ function Resolve-RtlNode {
 # is empty. Start-Process -Wait with redirected output handles both uniformly.
 function Invoke-RtlNodeCli {
     param([string]$Node, [string[]]$Arguments)
-    $outF = [System.IO.Path]::GetTempFileName()
-    $errF = [System.IO.Path]::GetTempFileName()
+    $outF = New-RtlSafeTempFile
+    $errF = New-RtlSafeTempFile
     try {
         # Pre-quote args with spaces (dev repo path has spaces; deployed bin does not).
         $quoted = $Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
@@ -820,7 +822,7 @@ function Invoke-RtlNodeCli {
         $err = [string](Get-Content -LiteralPath $errF -Raw -ErrorAction SilentlyContinue)
         return @{ Out = ($out + $err).Trim(); Exit = $pr.ExitCode }
     } finally {
-        Remove-Item -LiteralPath $outF, $errF -Force -ErrorAction SilentlyContinue
+        Remove-RtlSafeItem -LiteralPath $outF, $errF -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -872,7 +874,7 @@ function Clear-RtlRendererCache {
     foreach ($sub in @('Code Cache', 'GPUCache')) {
         $dir = Join-Path $Profile.UserDataDir $sub
         if (Test-Path $dir) {
-            try { Remove-Item -LiteralPath $dir -Recurse -Force; Write-RtlLog "Cleared renderer cache: $sub" }
+            try { Remove-RtlSafeItem -LiteralPath $dir -Recurse -Force; Write-RtlLog "Cleared renderer cache: $sub" }
             catch { Write-RtlLog "renderer cache clear failed ($sub): $($_.Exception.Message)" }
         }
     }
@@ -1100,6 +1102,7 @@ function Test-RtlPackage {
     param([Parameter(Mandatory)][string]$RepoRoot)
     $required = @(
         'scripts\lib\desktop-rtl-lib.ps1',
+        'scripts\lib\desktop-rtl-paths.ps1',
         'scripts\lib\asar-edit.mjs',
         'src\desktop-rtl-patch.js',
         'scripts\Watch-DesktopRtl.ps1'
@@ -1129,6 +1132,8 @@ function Assert-RtlDiskSpace {
 
 function Invoke-Robocopy {
     param([string]$From, [string]$To)
+    Assert-RtlSafePath -Path $To -Tree
+    Assert-RtlCopySourceTree -Path $From
     $a = @("`"$From`"", "`"$To`"", '/MIR', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
     $p = Start-Process robocopy -ArgumentList $a -Wait -PassThru -NoNewWindow
     return $p.ExitCode
@@ -1178,10 +1183,10 @@ function Update-CodexRtlConfigAsset {
             if (([regex]::Matches($html, $re)).Count -ne 1) { throw '[VERIFY] inline config tag missing or duplicated' }
             $tag = '<script id="desktop-rtl-config">' + $body + '</script>'
             $html = [regex]::Replace($html, $re, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $tag }, 1)
-            [IO.File]::WriteAllText($index, $html, (New-Object Text.UTF8Encoding $false))
+            [IO.File]::WriteAllText((Get-RtlSafePath -Path ($index)), $html, (New-Object Text.UTF8Encoding $false))
             Test-RtlInlineInjection -RendererDir $rendererDir | Out-Null
             Set-RtlConfigApplied
-        } finally { Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-RtlSafeItem -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
         return
     }
     if ($prof.RendererMode -eq 'dir') {
@@ -1193,10 +1198,10 @@ function Update-CodexRtlConfigAsset {
         Assert-RtlWriteAllowed -Profile $prof -Path $cfgAsset | Out-Null
         $cfgJs = Build-RtlConfigAsset -AppId $AppId
         try {
-            Copy-Item -LiteralPath $cfgJs -Destination $cfgAsset -Force
+            Copy-RtlSafeItem -LiteralPath $cfgJs -Destination $cfgAsset -Force
             Write-RtlLog "config asset (dir) updated: $cfgAsset"
             Set-RtlConfigApplied
-        } finally { Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-RtlSafeItem -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
         return
     }
     $liveAsar = Join-Path $prof.CopyRoot $prof.AsarRelPath
@@ -1213,7 +1218,7 @@ function Update-CodexRtlConfigAsset {
         if ($r.Exit -ne 0) { throw "[ASAR] config update failed ($($r.Exit)): $($r.Out)" }
         Write-RtlLog "config asset updated: $($r.Out)"
         Set-RtlConfigApplied
-    } finally { Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
+    } finally { Remove-RtlSafeItem -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue }
 }
 
 # Hash of the current settings file; used to detect when the baked config asset is
@@ -1224,8 +1229,8 @@ function Get-RtlConfigHash {
 }
 function Set-RtlConfigApplied {
     try {
-        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
-        Set-Content -LiteralPath $script:ConfigAppliedMarker -Value (Get-RtlConfigHash) -Encoding ASCII -NoNewline
+        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
+        Set-Content -LiteralPath (Get-RtlSafePath -Path ($script:ConfigAppliedMarker)) -Value (Get-RtlConfigHash) -Encoding ASCII -NoNewline
     } catch {}
 }
 
@@ -1352,8 +1357,8 @@ function Invoke-RtlDirInject {
     if (-not (Test-Path -LiteralPath $assets)) { throw "[LAYOUT] renderer assets dir not found: $assets" }
 
     # Drop the payload (+ optional config) next to the app's own assets.
-    Copy-Item -LiteralPath $PatchJs -Destination $payloadDest -Force
-    if ($ConfigJs) { Copy-Item -LiteralPath $ConfigJs -Destination $configDest -Force }
+    Copy-RtlSafeItem -LiteralPath $PatchJs -Destination $payloadDest -Force
+    if ($ConfigJs) { Copy-RtlSafeItem -LiteralPath $ConfigJs -Destination $configDest -Force }
 
     $html = [IO.File]::ReadAllText($index)
     # Strip any prior injection (idempotent / self-correcting), then re-insert exactly once.
@@ -1371,7 +1376,7 @@ function Invoke-RtlDirInject {
     } else {
         $html = $insert + $html
     }
-    [IO.File]::WriteAllText($index, $html, (New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText((Get-RtlSafePath -Path ($index)), $html, (New-Object Text.UTF8Encoding $false))
     Write-RtlLog "dir-inject: patched $index (+ payload$(if($ConfigJs){'+config'}) in assets)"
 }
 
@@ -1422,7 +1427,7 @@ function Invoke-RtlInlineInject {
     if (-not $payloadBody) { throw '[LAYOUT] RTL payload is empty.' }
     $insert = '<script id="desktop-rtl-config">' + $configBody + '</script>' + '<script type="module" id="desktop-rtl-payload">' + $payloadBody + '</script>'
     $html = $html.Substring(0, $bundle.Index) + $insert + $html.Substring($bundle.Index)
-    [IO.File]::WriteAllText($index, $html, (New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText((Get-RtlSafePath -Path ($index)), $html, (New-Object Text.UTF8Encoding $false))
     Write-RtlLog "inline-inject: patched $index"
 }
 
@@ -1451,16 +1456,16 @@ function Invoke-AtomicSwap {
     #   Staging so the NEXT update mirrors only deltas (warm baseline) rather than
     #   doing a full ~1.6GB copy. Uninstall clears the persistent staging.
     param([switch]$ReseedStaging)
-    if (Test-Path $script:OldRoot) { Remove-Item -LiteralPath $script:OldRoot -Recurse -Force }
+    if (Test-Path $script:OldRoot) { Remove-RtlSafeItem -LiteralPath $script:OldRoot -Recurse -Force }
     if (Test-Path $script:CopyRoot) {
-        Rename-Item -LiteralPath $script:CopyRoot -NewName (Split-Path $script:OldRoot -Leaf) -Force
+        Rename-RtlSafeItem -LiteralPath $script:CopyRoot -NewName (Split-Path $script:OldRoot -Leaf) -Force
     }
     try {
-        Rename-Item -LiteralPath $script:Staging -NewName (Split-Path $script:CopyRoot -Leaf) -Force
+        Rename-RtlSafeItem -LiteralPath $script:Staging -NewName (Split-Path $script:CopyRoot -Leaf) -Force
     } catch {
         # Roll back: restore the previous copy so the user is never left without one.
         if (-not (Test-Path $script:CopyRoot) -and (Test-Path $script:OldRoot)) {
-            Rename-Item -LiteralPath $script:OldRoot -NewName (Split-Path $script:CopyRoot -Leaf) -Force
+            Rename-RtlSafeItem -LiteralPath $script:OldRoot -NewName (Split-Path $script:CopyRoot -Leaf) -Force
         }
         throw
     }
@@ -1469,10 +1474,10 @@ function Invoke-AtomicSwap {
             # Keep the previous copy as the warm staging baseline for the next update.
             # If relabeling fails for any reason, fall back to deleting it (correctness
             # over speed): a missing staging just means the next build is a full copy.
-            try { Rename-Item -LiteralPath $script:OldRoot -NewName (Split-Path $script:Staging -Leaf) -Force }
-            catch { try { Remove-Item -LiteralPath $script:OldRoot -Recurse -Force } catch {} }
+            try { Rename-RtlSafeItem -LiteralPath $script:OldRoot -NewName (Split-Path $script:Staging -Leaf) -Force }
+            catch { try { Remove-RtlSafeItem -LiteralPath $script:OldRoot -Recurse -Force } catch {} }
         } else {
-            Remove-Item -LiteralPath $script:OldRoot -Recurse -Force
+            Remove-RtlSafeItem -LiteralPath $script:OldRoot -Recurse -Force
         }
     }
 }
@@ -1489,6 +1494,7 @@ function Invoke-AtomicSwap {
 function Set-RtlShortcutIdentity {
     param([string]$Lnk, [string]$Aumid, [string]$IconRes)
     if (-not $Aumid) { return }
+    Assert-RtlSafePath -Path $Lnk
     if (-not ([System.Management.Automation.PSTypeName]'RtlShortcutId').Type) {
         Add-Type -TypeDefinition @'
 using System;
@@ -1565,10 +1571,10 @@ function New-RtlLaunchScript {
         ("sh.CurrentDirectory = " + (& $q $work)),
         ("sh.Run " + (& $q ('"' + $exe + '"')) + ", 1, False")
     )
-    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
     $path = Join-Path $script:StateDir $Profile.LaunchScript
     # ASCII: the generated script is machine-written and holds only paths + env names.
-    [System.IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.ASCIIEncoding))
+    [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($path)), (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.ASCIIEncoding))
     Write-RtlLog "Wrote launcher $path (env: $(($Profile.LaunchEnv.Keys | Sort-Object) -join ', '))"
     return $path
 }
@@ -1609,7 +1615,7 @@ function New-RtlShortcut {
     $ws = New-Object -ComObject WScript.Shell
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {
         try {
-            $sc = $ws.CreateShortcut($lnk)
+            $sc = $ws.CreateShortcut((Get-RtlSafePath -Path ($lnk)))
             $sc.TargetPath       = $target
             $sc.Arguments        = $lnkArgs
             $sc.WorkingDirectory = $work
@@ -1627,7 +1633,7 @@ function New-RtlShortcut {
         }
     }
     foreach ($old in $script:LegacyShortcuts) {
-        if (Test-Path $old) { try { Remove-Item -LiteralPath $old -Force } catch {} }
+        if (Test-Path $old) { try { Remove-RtlSafeItem -LiteralPath $old -Force } catch {} }
     }
 }
 
@@ -1716,10 +1722,10 @@ function Export-CodexRtlDiagnostics {
     }
     $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
     $work = Join-Path $env:TEMP ("CodexRtl-diag-" + $ts)
-    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($work)) | Out-Null
     $writeSan = {
         param($name, $text)
-        [System.IO.File]::WriteAllText((Join-Path $work $name), (Get-RtlSanitizedText $text), (New-Object System.Text.UTF8Encoding $false))
+        [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ((Join-Path $work $name))), (Get-RtlSanitizedText $text), (New-Object System.Text.UTF8Encoding $false))
     }
     try {
         # state.json (sanitized)
@@ -1766,7 +1772,7 @@ function Export-CodexRtlDiagnostics {
             }
         } catch { & $writeSan 'injection.error.txt' $_.Exception.Message }
         # capped logs (last ~10MB total, newest first)
-        $logDst = Join-Path $work 'logs'; New-Item -ItemType Directory -Force -Path $logDst | Out-Null
+        $logDst = Join-Path $work 'logs'; New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($logDst)) | Out-Null
         $budget = 10MB
         $logFiles = @()
         if (Test-Path $script:LogsDir) { $logFiles += Get-ChildItem $script:LogsDir -File -ErrorAction SilentlyContinue }
@@ -1776,12 +1782,12 @@ function Export-CodexRtlDiagnostics {
             try { & $writeSan (Join-Path 'logs' $f.Name) (Get-Content $f.FullName -Raw); $budget -= $f.Length } catch {}
         }
         $zip = Join-Path $OutDir ("CodexRtl-diagnostics-" + $ts + ".zip")
-        if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-        Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -Force
+        if (Test-Path $zip) { Remove-RtlSafeItem -LiteralPath $zip -Force }
+        Compress-Archive -Path (Join-Path $work '*') -DestinationPath (Get-RtlSafePath -Path $zip) -Force
         Write-RtlLog "Diagnostics bundle written to $zip"
         return $zip
     } finally {
-        try { Remove-Item -LiteralPath $work -Recurse -Force } catch {}
+        try { Remove-RtlSafeItem -LiteralPath $work -Recurse -Force } catch {}
     }
 }
 
@@ -1828,14 +1834,14 @@ function Test-RtlUpdateBlocked {
 # deterministic (repeating) failure latches - a one-off transient error does not.
 function Set-RtlBlocked {
     param([string]$Signature, [string]$ErrorMessage)
-    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+    if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
     $prev  = Get-RtlBlockRecord -Signature $Signature
     $count = if ($prev -and $prev.count) { [int]$prev.count + 1 } else { 1 }
     $o = [ordered]@{ signature = $Signature; patchVersion = $script:PatchVersion; error = $ErrorMessage; at = (Get-Date).ToString('o'); count = $count }
-    try { [System.IO.File]::WriteAllText($script:BlockedFile, (([pscustomobject]$o) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false)); Write-RtlLog "Recorded update failure ($count/$($script:BlockThreshold)) for signature '$Signature': $ErrorMessage" } catch {}
+    try { [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($script:BlockedFile)), (([pscustomobject]$o) | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false)); Write-RtlLog "Recorded update failure ($count/$($script:BlockThreshold)) for signature '$Signature': $ErrorMessage" } catch {}
 }
 function Clear-RtlBlocked {
-    if (Test-Path $script:BlockedFile) { try { Remove-Item -LiteralPath $script:BlockedFile -Force; Write-RtlLog 'Cleared stale/forced update block.' } catch {} }
+    if (Test-Path $script:BlockedFile) { try { Remove-RtlSafeItem -LiteralPath $script:BlockedFile -Force; Write-RtlLog 'Cleared stale/forced update block.' } catch {} }
 }
 # The SINGLE source of truth for which Invoke-CodexRtlUpdate failures latch an auto-retry
 # block (after $script:BlockThreshold consecutive occurrences). Latch only DETERMINISTIC
@@ -1863,7 +1869,7 @@ function Get-CodexRtlStatus {
         try {
             $raw = Get-Content $script:StateFile -Raw -ErrorAction Stop
             if ($raw -and $raw.Trim()) {
-                Move-Item -LiteralPath $script:StateFile -Destination "$($script:StateFile).bad" -Force
+                Move-Item -LiteralPath (Get-RtlSafePath -Path ($script:StateFile)) -Destination (Get-RtlSafePath -Path ("$($script:StateFile).bad")) -Force
                 Write-RtlLog 'Corrupt state.json backed up to state.json.bad.'
             }
         } catch {}
@@ -1907,7 +1913,7 @@ function Invoke-CodexRtlUpdate {
         # self-heal: recover from a crash mid-swap (CopyRoot gone, OldRoot present).
         if (-not (Test-Path $script:CopyRoot) -and (Test-Path $script:OldRoot)) {
             Write-RtlLog 'Self-heal: CopyRoot missing but OldRoot present; restoring previous copy.'
-            try { Rename-Item -LiteralPath $script:OldRoot -NewName (Split-Path $script:CopyRoot -Leaf) -Force }
+            try { Rename-RtlSafeItem -LiteralPath $script:OldRoot -NewName (Split-Path $script:CopyRoot -Leaf) -Force }
             catch { Write-RtlLog "self-heal failed: $($_.Exception.Message)" }
         }
         $src = Resolve-RtlSource
@@ -2014,7 +2020,7 @@ function Invoke-CodexRtlUpdate {
             }
             catch {
                 Write-RtlLog "Staging matches the source version but failed verification ($($_.Exception.Message)); rebuilding it."
-                Remove-Item -LiteralPath $stagingSig -Force -ErrorAction SilentlyContinue
+                Remove-RtlSafeItem -LiteralPath $stagingSig -Force -ErrorAction SilentlyContinue
                 $stagingReady = $false
             }
         }
@@ -2023,7 +2029,7 @@ function Invoke-CodexRtlUpdate {
             $warm = (Test-Path $stagingExe) -and (-not $torn)
             if ($torn) {
                 Write-RtlLog 'Previous staging build was interrupted; forcing a clean cold rebuild.'
-                try { if (Test-Path $script:Staging) { Remove-Item -LiteralPath $script:Staging -Recurse -Force } }
+                try { if (Test-Path $script:Staging) { Remove-RtlSafeItem -LiteralPath $script:Staging -Recurse -Force } }
                 catch { throw "[STAGING] Could not clear a torn staging folder ($($script:Staging)); close anything using it and try again. $($_.Exception.Message)" }
                 $warm = $false
             }
@@ -2034,13 +2040,13 @@ function Invoke-CodexRtlUpdate {
                 Assert-RtlDiskSpace -SourceDir $src.AppDir   # only a full copy needs the big free-space budget
                 Write-RtlLog 'Building patched copy in staging (full copy)...'
             }
-            New-Item -ItemType Directory -Force -Path $stagingApp | Out-Null
+            New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($stagingApp)) | Out-Null
             # Mark the build in progress BEFORE we start mutating the tree, so an
             # interrupted mirror is detected as torn on the next run.
-            Set-Content -LiteralPath $buildingFlag -Value '1' -Encoding ASCII -NoNewline
+            Set-Content -LiteralPath (Get-RtlSafePath -Path ($buildingFlag)) -Value '1' -Encoding ASCII -NoNewline
             # Stale sig removed up front: a matching sig must only ever coexist with a
             # fully built + verified tree, never with a half-mirrored one.
-            if (Test-Path $stagingSig) { Remove-Item -LiteralPath $stagingSig -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $stagingSig) { Remove-RtlSafeItem -LiteralPath $stagingSig -Force -ErrorAction SilentlyContinue }
             # /MIR re-mirrors the pristine source over staging: our patched app.asar
             # differs from the source, so robocopy restores the pristine asar (giving
             # re-injection a clean base) and drops any stale artifacts (e.g. app.asar.bak).
@@ -2050,7 +2056,7 @@ function Invoke-CodexRtlUpdate {
             # so the copy's electron-updater never tries to update itself in place).
             foreach ($rel in @($p.RemoveFromCopy)) {
                 $victim = Join-RtlTree $stagingApp $rel
-                if (Test-Path $victim) { try { Remove-Item -LiteralPath $victim -Force; Write-RtlLog "Removed from copy: $rel" } catch { Write-RtlLog "could not remove $rel from copy: $($_.Exception.Message)" } }
+                if (Test-Path $victim) { try { Remove-RtlSafeItem -LiteralPath $victim -Force; Write-RtlLog "Removed from copy: $rel" } catch { Write-RtlLog "could not remove $rel from copy: $($_.Exception.Message)" } }
             }
             Set-RtlStep 'inject' 70 $true
             # Bake the current settings alongside the payload so a fresh copy already
@@ -2082,10 +2088,10 @@ function Invoke-CodexRtlUpdate {
                     Test-RtlInjection -AsarPath $stagingAsar -AllowExternalNodeFallback:$AllowExternalNodeFallback | Out-Null
                 }
             } finally {
-                Remove-Item -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue
+                Remove-RtlSafeItem -LiteralPath $cfgJs -Force -ErrorAction SilentlyContinue
             }
-            Set-Content -LiteralPath $stagingSig -Value $buildSig -Encoding UTF8 -NoNewline
-            Remove-Item -LiteralPath $buildingFlag -Force -ErrorAction SilentlyContinue
+            Set-Content -LiteralPath (Get-RtlSafePath -Path ($stagingSig)) -Value $buildSig -Encoding UTF8 -NoNewline
+            Remove-RtlSafeItem -LiteralPath $buildingFlag -Force -ErrorAction SilentlyContinue
             Write-RtlLog 'Staging build complete and verified.'
         } else {
             Write-RtlLog 'Staging already built for this version; attempting swap.'
@@ -2329,9 +2335,10 @@ function Copy-RtlBin {
     # on the repo path. -Dest lets the self-updater stage into bin.staging.
     param([string]$RepoRoot, [string]$Dest)
     if (-not $Dest) { $Dest = $script:BinDir }
-    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+    New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($Dest)) | Out-Null
     $items = @(
         @{ src = 'scripts\lib\desktop-rtl-lib.ps1'; dst = 'desktop-rtl-lib.ps1';   req = $true },
+        @{ src = 'scripts\lib\desktop-rtl-paths.ps1'; dst = 'desktop-rtl-paths.ps1'; req = $true },
         @{ src = 'scripts\lib\desktop-rtl-errors.ps1'; dst = 'desktop-rtl-errors.ps1'; req = $false },
         @{ src = 'scripts\lib\desktop-rtl-herdr.ps1'; dst = 'desktop-rtl-herdr.ps1'; req = $false },
         @{ src = 'scripts\lib\asar-edit.mjs';     dst = 'asar-edit.mjs';        req = $true },
@@ -2350,7 +2357,7 @@ function Copy-RtlBin {
     )
     foreach ($it in $items) {
         $s = Join-Path $RepoRoot $it.src
-        if (Test-Path $s) { Copy-Item $s (Join-Path $Dest $it.dst) -Force }
+        if (Test-Path $s) { Copy-RtlSafeItem $s (Join-Path $Dest $it.dst) -Force }
         elseif ($it.req) { throw "[PACKAGE] deploy source missing: $($it.src)" }
     }
     Write-RtlLog "Deployed runtime to $Dest"
@@ -2367,9 +2374,9 @@ function Write-RtlAgentLog {
     $line = "$([DateTime]::Now.ToString('o'))  [$PID]  $Message"
     Write-Host $line
     try {
-        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
-        if ((Test-Path $script:AgentLogFile) -and (Get-Item $script:AgentLogFile).Length -gt 1MB) { Move-Item $script:AgentLogFile "$($script:AgentLogFile).old" -Force }
-        Add-Content -LiteralPath $script:AgentLogFile -Value $line -Encoding UTF8
+        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:AgentHome)) | Out-Null }
+        if ((Test-Path $script:AgentLogFile) -and (Get-Item $script:AgentLogFile).Length -gt 1MB) { Move-Item (Get-RtlSafePath -Path ($script:AgentLogFile)) (Get-RtlSafePath -Path ("$($script:AgentLogFile).old")) -Force }
+        Add-Content -LiteralPath (Get-RtlSafePath -Path ($script:AgentLogFile)) -Value $line -Encoding UTF8
     } catch {}
 }
 
@@ -2413,16 +2420,16 @@ function Read-RtlAgentConfig {
 function Write-RtlAgentConfig {
     param($Config)
     Invoke-RtlWithSetupMutex {
-        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:AgentHome)) | Out-Null }
         $json = ([pscustomobject]$Config) | ConvertTo-Json -Depth 4
         $tmp = "$($script:AgentConfigFile).tmp"
         $enc = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($tmp, $json, $enc)
+        [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($tmp)), $json, $enc)
         # File.Replace needs an existing destination, so it cannot do the first write.
         if (Test-Path $script:AgentConfigFile) {
-            [System.IO.File]::Replace($tmp, $script:AgentConfigFile, "$($script:AgentConfigFile).bak")
+            [System.IO.File]::Replace((Get-RtlSafePath -Path ($tmp)), (Get-RtlSafePath -Path ($script:AgentConfigFile)), (Get-RtlSafePath -Path ("$($script:AgentConfigFile).bak")))
         } else {
-            [System.IO.File]::Move($tmp, $script:AgentConfigFile)
+            [System.IO.File]::Move((Get-RtlSafePath -Path ($tmp)), (Get-RtlSafePath -Path ($script:AgentConfigFile)))
         }
         Write-RtlAgentLog 'agent config written.'
     }
@@ -2434,7 +2441,7 @@ function Write-RtlAgentConfig {
 function Invoke-RtlAgentMigration {
     Invoke-RtlWithSetupMutex {
         if (Test-Path $script:AgentMarker) { return }
-        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
+        if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:AgentHome)) | Out-Null }
         $needConfig = $true
         if (Test-Path $script:AgentConfigFile) {
             $valid = $false
@@ -2442,8 +2449,8 @@ function Invoke-RtlAgentMigration {
             if ($valid) { $needConfig = $false }
             else {
                 $q = "$($script:AgentConfigFile).corrupt"
-                try { if (Test-Path $q) { Remove-Item -LiteralPath $q -Force }
-                      Rename-Item -LiteralPath $script:AgentConfigFile -NewName ([IO.Path]::GetFileName($q)) -Force
+                try { if (Test-Path $q) { Remove-RtlSafeItem -LiteralPath $q -Force }
+                      Rename-RtlSafeItem -LiteralPath $script:AgentConfigFile -NewName ([IO.Path]::GetFileName($q)) -Force
                       Write-RtlAgentLog 'quarantined a corrupt agent.json before migration.' } catch {}
             }
         }
@@ -2464,7 +2471,7 @@ function Invoke-RtlAgentMigration {
             Write-RtlAgentLog "migrating global toggles from ${from}: autoPatch=$auto checkForToolUpdates=$chk"
             Write-RtlAgentConfig ([ordered]@{ schemaVersion = 1; autoPatch = $auto; checkForToolUpdates = $chk })
         }
-        Set-Content -LiteralPath $script:AgentMarker -Value "v$($script:PatchVersion)" -Encoding ASCII -NoNewline
+        Set-Content -LiteralPath (Get-RtlSafePath -Path ($script:AgentMarker)) -Value "v$($script:PatchVersion)" -Encoding ASCII -NoNewline
         Write-RtlAgentLog 'agent migration complete.'
     }
 }
@@ -2655,7 +2662,7 @@ function Write-RtlAgentReady {
     param([string]$Generation)
     try {
         $o = [pscustomobject]@{ pid = $PID; generation = $Generation; at = [DateTime]::Now.ToString('o') }
-        [System.IO.File]::WriteAllText($script:AgentReadyFile, ($o | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding $false))
+        [System.IO.File]::WriteAllText((Get-RtlSafePath -Path ($script:AgentReadyFile)), ($o | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding $false))
     } catch {}
 }
 # Wait until a live tray reports readiness at $Generation (bounded). Verifies the PID
@@ -2682,8 +2689,8 @@ function Invoke-RtlBinSwapRecovery {
     try {
         $liveOk = (Test-Path (Join-Path $script:AgentBinDir 'desktop-rtl-lib.ps1'))
         if (-not $liveOk -and (Test-Path (Join-Path $script:AgentBinOld 'desktop-rtl-lib.ps1'))) {
-            if (Test-Path $script:AgentBinDir) { Remove-Item -LiteralPath $script:AgentBinDir -Recurse -Force -ErrorAction SilentlyContinue }
-            Rename-Item -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
+            if (Test-Path $script:AgentBinDir) { Remove-RtlSafeItem -LiteralPath $script:AgentBinDir -Recurse -Force -ErrorAction SilentlyContinue }
+            Rename-RtlSafeItem -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
             Write-RtlAgentLog 'recovered agent bin from bin.old after an interrupted swap.'
         }
     } catch { Write-RtlAgentLog "bin recovery failed: $($_.Exception.Message)" }
@@ -2708,14 +2715,14 @@ function Invoke-RtlBinSwap {
             return $null
         }
         $gen = New-RtlAgentGeneration
-        Set-Content -LiteralPath (Join-Path $script:AgentBinStaging 'generation.txt') -Value $gen -Encoding ASCII -NoNewline
-        if (Test-Path $script:AgentBinOld) { Remove-Item -LiteralPath $script:AgentBinOld -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $script:AgentBinDir) { Rename-Item -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($script:AgentBinOld)) -Force }
-        Rename-Item -LiteralPath $script:AgentBinStaging -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
+        Set-Content -LiteralPath (Get-RtlSafePath -Path ((Join-Path $script:AgentBinStaging 'generation.txt'))) -Value $gen -Encoding ASCII -NoNewline
+        if (Test-Path $script:AgentBinOld) { Remove-RtlSafeItem -LiteralPath $script:AgentBinOld -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $script:AgentBinDir) { Rename-RtlSafeItem -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($script:AgentBinOld)) -Force }
+        Rename-RtlSafeItem -LiteralPath $script:AgentBinStaging -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
         if (-not (Test-RtlStagedBin $script:AgentBinDir)) {
             Write-RtlAgentLog 'new bin failed post-swap validation; rolling back to bin.old.'
-            if (Test-Path $script:AgentBinDir) { Rename-Item -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($script:AgentBinStaging)) -Force }
-            if (Test-Path $script:AgentBinOld) { Rename-Item -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force }
+            if (Test-Path $script:AgentBinDir) { Rename-RtlSafeItem -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($script:AgentBinStaging)) -Force }
+            if (Test-Path $script:AgentBinOld) { Rename-RtlSafeItem -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force }
             return $null
         }
         Write-RtlAgentLog "bin swapped in (generation $gen); bin.old retained pending readiness."
@@ -2727,16 +2734,16 @@ function Restore-RtlBinOld {
     Invoke-RtlWithSetupMutex {
         if (-not (Test-Path $script:AgentBinOld)) { Write-RtlAgentLog 'no bin.old to restore.'; return $false }
         $failed = "$($script:AgentBinDir).failed"
-        if (Test-Path $failed) { Remove-Item -LiteralPath $failed -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $script:AgentBinDir) { Rename-Item -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($failed)) -Force }
-        Rename-Item -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
+        if (Test-Path $failed) { Remove-RtlSafeItem -LiteralPath $failed -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $script:AgentBinDir) { Rename-RtlSafeItem -LiteralPath $script:AgentBinDir -NewName ([IO.Path]::GetFileName($failed)) -Force }
+        Rename-RtlSafeItem -LiteralPath $script:AgentBinOld -NewName ([IO.Path]::GetFileName($script:AgentBinDir)) -Force
         Write-RtlAgentLog 'restored bin.old after a readiness failure.'
         return $true
     }
 }
 function Complete-RtlBinSwap {
     # Called once the new generation is confirmed ready: drop the retained bin.old.
-    if (Test-Path $script:AgentBinOld) { try { Remove-Item -LiteralPath $script:AgentBinOld -Recurse -Force } catch {} }
+    if (Test-Path $script:AgentBinOld) { try { Remove-RtlSafeItem -LiteralPath $script:AgentBinOld -Recurse -Force } catch {} }
 }
 
 # ---- HKCU\Run registration (idempotent, ownership-checked) -------------------
@@ -2788,7 +2795,7 @@ function Unregister-RtlAgent {
 function Install-RtlAgent {
     param([string]$RepoRoot)
     Invoke-RtlAgentMigration
-    if (Test-Path $script:AgentBinStaging) { Remove-Item -LiteralPath $script:AgentBinStaging -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $script:AgentBinStaging) { Remove-RtlSafeItem -LiteralPath $script:AgentBinStaging -Recurse -Force -ErrorAction SilentlyContinue }
     Copy-RtlBin -RepoRoot $RepoRoot -Dest $script:AgentBinStaging | Out-Null
     Stop-RtlOwnedProcesses -Roots @($script:AgentBinDir)          # stop any existing unified tray before swap
     Start-Sleep -Milliseconds 400                                 # let the stopped tray release any bin handles
@@ -2796,7 +2803,7 @@ function Install-RtlAgent {
     if (-not $gen) { throw '[PACKAGE] agent bin staging/swap failed; nothing changed.' }
     $vbs = Get-RtlTrayLauncher -BinDir $script:AgentBinDir
     if (-not $vbs) { throw '[PACKAGE] tray launcher missing from the deployed bin.' }
-    if (Test-Path $script:AgentReadyFile) { try { Remove-Item -LiteralPath $script:AgentReadyFile -Force } catch {} }
+    if (Test-Path $script:AgentReadyFile) { try { Remove-RtlSafeItem -LiteralPath $script:AgentReadyFile -Force } catch {} }
     Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList "`"$vbs`""
     if (Wait-RtlAgentReady -Generation $gen) {
         Complete-RtlBinSwap
@@ -2826,7 +2833,7 @@ function Invoke-RtlAgentLastCleanup {
         foreach ($p in @($script:AgentBinDir, $script:AgentBinStaging, $script:AgentBinOld,
                          $script:AgentPendingSelfUpdate, $script:AgentMarker, $script:AgentConfigFile,
                          $script:AgentReadyFile, "$($script:AgentConfigFile).bak")) {
-            if (Test-Path $p) { try { Remove-Item -LiteralPath $p -Recurse -Force; Write-RtlAgentLog "removed $p" } catch { Write-RtlAgentLog "could not remove $p : $($_.Exception.Message)" } }
+            if (Test-Path $p) { try { Remove-RtlSafeItem -LiteralPath $p -Recurse -Force; Write-RtlAgentLog "removed $p" } catch { Write-RtlAgentLog "could not remove $p : $($_.Exception.Message)" } }
         }
         Write-RtlAgentLog 'last-app agent cleanup done (agent.log kept).'
     }
@@ -2886,29 +2893,29 @@ function Invoke-RtlSelfUpdate {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $tmp = Join-Path $env:TEMP ('codexrtl-selfupd-' + [Guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($tmp)) | Out-Null
         try {
             $zip = Join-Path $tmp 'pkg.zip'
-            Invoke-WebRequest -Uri $Info.ZipUrl -OutFile $zip -UseBasicParsing
+            Invoke-WebRequest -Uri $Info.ZipUrl -OutFile (Get-RtlSafePath -Path ($zip)) -UseBasicParsing
             $sumsRaw = (Invoke-WebRequest -Uri $Info.Sha256Url -UseBasicParsing).Content
             $sums = if ($sumsRaw -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($sumsRaw) } else { [string]$sumsRaw }
             $have = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
             if (-not ($sums -and ($sums.ToLower() -match [regex]::Escape($have)))) {
                 throw '[INTEGRITY] the downloaded tool update did not match the published SHA-256 checksum.'
             }
-            Expand-Archive -Path $zip -DestinationPath $tmp -Force
+            Expand-Archive -Path $zip -DestinationPath (Get-RtlSafePath -Path ($tmp) -Tree) -Force
             $root = Get-ChildItem -Directory -Path $tmp | Select-Object -First 1
             if (-not $root) { throw '[INTEGRITY] update archive was empty.' }
             Test-RtlPackage -RepoRoot $root.FullName | Out-Null
             # Stage into the NEUTRAL agent bin (not any per-app bin). The tray's pre-load
             # swap block applies it on next start, then relaunches from the fresh bin.
-            if (Test-Path $script:AgentBinStaging) { Remove-Item -LiteralPath $script:AgentBinStaging -Recurse -Force }
+            if (Test-Path $script:AgentBinStaging) { Remove-RtlSafeItem -LiteralPath $script:AgentBinStaging -Recurse -Force }
             Copy-RtlBin -RepoRoot $root.FullName -Dest $script:AgentBinStaging | Out-Null
-            if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path $script:AgentHome | Out-Null }
-            Set-Content -LiteralPath $script:AgentPendingSelfUpdate -Value $Info.LatestTag -Encoding ASCII -NoNewline
+            if (-not (Test-Path $script:AgentHome)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:AgentHome)) | Out-Null }
+            Set-Content -LiteralPath (Get-RtlSafePath -Path ($script:AgentPendingSelfUpdate)) -Value $Info.LatestTag -Encoding ASCII -NoNewline
             Write-RtlAgentLog "Self-update staged $($Info.LatestTag); will apply on next tray start."
             return $true
-        } finally { try { Remove-Item -LiteralPath $tmp -Recurse -Force } catch {} }
+        } finally { try { Remove-RtlSafeItem -LiteralPath $tmp -Recurse -Force } catch {} }
     } finally { Exit-RtlLock }
 }
 
@@ -2932,7 +2939,7 @@ function Invoke-CodexRtlUninstall {
     # a moment later; retry before declaring the cleanup uncertain.
     function Remove-RtlPathRetry([string]$Path, [switch]$Recurse) {
         for ($i = 1; $i -le 3; $i++) {
-            try { Remove-Item -LiteralPath $Path -Recurse:$Recurse -Force -ErrorAction Stop; Write-RtlLog "removed $Path"; return $true }
+            try { Remove-RtlSafeItem -LiteralPath $Path -Recurse:$Recurse -Force -ErrorAction Stop; Write-RtlLog "removed $Path"; return $true }
             catch { if ($i -lt 3) { Start-Sleep -Milliseconds 1500 } else { Write-RtlLog "could not remove $Path : $($_.Exception.Message)" } }
         }
         return $false
@@ -2975,7 +2982,7 @@ function Invoke-CodexRtlUninstall {
             $val = (Get-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue).$legacy
             if ($val -and (Test-RtlOwnedCommand $val)) { Remove-ItemProperty -Path $script:RunKey -Name $legacy -ErrorAction SilentlyContinue; Write-RtlLog "removed legacy Run value $legacy" }
         } catch {}
-        if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-Item -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true; $leftovers += $script:LogsDir } }
+        if ($PurgeLogs -and (Test-Path $script:LogsDir)) { try { Remove-RtlSafeItem -LiteralPath $script:LogsDir -Recurse -Force; Write-RtlLog 'Purged logs.' } catch { $uncertain = $true; $leftovers += $script:LogsDir } }
         Write-RtlLog "Per-app uninstall complete (app=$($script:ActiveProfile.Id), certain=$(-not $uncertain))."
     } finally { Exit-RtlLock }
     return [pscustomobject]@{ App = $script:ActiveProfile.Id; Certain = (-not $uncertain); Leftovers = $leftovers }

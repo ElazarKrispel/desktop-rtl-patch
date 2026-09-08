@@ -152,6 +152,13 @@ function Move-Item {
     [void](Assert-RtlTestPath $Destination)
     Microsoft.PowerShell.Management\Move-Item @PSBoundParameters
 }
+function Rename-Item {
+    [CmdletBinding()] param([Parameter(Position=0)][string]$Path,[string]$LiteralPath,[Parameter(Position=1)][string]$NewName,[switch]$Force)
+    $source = if ($LiteralPath) { $LiteralPath } else { $Path }
+    [void](Assert-RtlTestPath $source)
+    [void](Assert-RtlTestPath (Join-Path (Split-Path $source -Parent) $NewName))
+    Microsoft.PowerShell.Management\Rename-Item @PSBoundParameters
+}
 function Get-Content {
     [CmdletBinding()] param([Parameter(Position=0)][string[]]$Path,[string[]]$LiteralPath,[switch]$Raw,[string]$Encoding)
     foreach ($p in $(if($LiteralPath){$LiteralPath}else{$Path})) { [void](Assert-RtlTestPath $p -ReadOnly) }
@@ -209,6 +216,9 @@ function Set-RtlTestProductBoundaries {
     $script:AgentSetupMutexName = $script:RtlTestIpcPrefix + 'setup'
     $script:AgentTrayMutexName = $script:RtlTestIpcPrefix + 'tray'
     $script:AgentQuitEventName = $script:RtlTestIpcPrefix + 'quit'
+    # This broad suite uses only ordinary fixture files and does not test native
+    # link metadata. The dedicated path harness runs the actual Windows helper.
+    Set-Item Function:script:Assert-RtlSingleLink { param($Path) [void](Assert-RtlTestPath $Path -ReadOnly) }
     Set-Item Function:script:Test-CodexRtlRunning { return $false }
     Set-Item Function:script:Stop-CodexRtlWatcher { }
     Set-Item Function:script:Remove-RtlCopyShellRegistrations { param($CopyRoot) [void](Assert-RtlTestPath $CopyRoot); return @() }

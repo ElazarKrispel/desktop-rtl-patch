@@ -139,7 +139,7 @@ function Resolve-HerdrRtlArtifact {
         [Parameter(Mandatory)][string]$WorkDir,
         $Profile = $script:ActiveProfile
     )
-    if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null }
+    if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($WorkDir)) | Out-Null }
 
     $local = $env:HERDR_RTL_ARTIFACT
     if ($local) {
@@ -167,7 +167,7 @@ function Resolve-HerdrRtlArtifact {
         $ProgressPreference = 'SilentlyContinue'
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -MaximumRedirection 5
+            Invoke-WebRequest -Uri $url -OutFile (Get-RtlSafePath -Path ($zip)) -UseBasicParsing -MaximumRedirection 5
             $sumsRaw = (Invoke-WebRequest -Uri $sumsUrl -UseBasicParsing -MaximumRedirection 5).Content
         } finally { $ProgressPreference = $old }
     }
@@ -193,11 +193,11 @@ function Resolve-HerdrRtlArtifact {
 
 function Expand-HerdrArchive {
     param([Parameter(Mandatory)][string]$Archive, [Parameter(Mandatory)][string]$Destination)
-    if (Test-Path $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    if (Test-Path $Destination) { Remove-RtlSafeItem -LiteralPath $Destination -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($Destination)) | Out-Null
     try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
-        [IO.Compression.ZipFile]::ExtractToDirectory($Archive, $Destination)
+        [IO.Compression.ZipFile]::ExtractToDirectory($Archive, (Get-RtlSafePath -Path $Destination -Tree))
     }
     catch { throw "[ARTIFACT] Could not extract $Archive : $($_.Exception.Message)" }
 }
@@ -222,11 +222,11 @@ function Invoke-HerdrRtlBuild {
     $work = Join-Path $script:StateDir 'artifact.work'
     try {
         $artifact = Resolve-HerdrRtlArtifact -WorkDir $work -Profile $Profile
-        if (Test-Path $script:Staging) { Remove-Item -LiteralPath $script:Staging -Recurse -Force }
-        New-Item -ItemType Directory -Force -Path $script:Staging | Out-Null
+        if (Test-Path $script:Staging) { Remove-RtlSafeItem -LiteralPath $script:Staging -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:Staging)) | Out-Null
         # Guard: the staging tree is inside our own state folder, never the user's install.
         Assert-RtlWriteAllowed -Path (Join-Path $script:Staging 'herdr.exe') -Profile $Profile
-        Copy-Item -Path (Join-Path $artifact '*') -Destination $script:Staging -Recurse -Force
+        Copy-RtlSafeItem -Path (Join-Path $artifact '*') -Destination $script:Staging -Recurse -Force
         # Windows Herdr needs the ConPTY payload beside the binary. Our build ships it,
         # but fall back to the official install's copy if a future asset drops it.
         $stagedConpty = Join-Path $script:Staging 'conpty'
@@ -234,13 +234,13 @@ function Invoke-HerdrRtlBuild {
             $srcConpty = Join-Path $Source.AppDir 'conpty'
             if (Test-Path $srcConpty) {
                 Write-RtlLog 'RTL build has no conpty payload; taking it from the official install (read only).'
-                Copy-Item -Path $srcConpty -Destination $stagedConpty -Recurse -Force
+                Copy-RtlSafeItem -Path $srcConpty -Destination $stagedConpty -Recurse -Force
             }
         }
         Test-HerdrRtlBuild -Root $script:Staging -Source $Source | Out-Null
     }
     finally {
-        if (Test-Path $work) { try { Remove-Item -LiteralPath $work -Recurse -Force } catch {} }
+        if (Test-Path $work) { try { Remove-RtlSafeItem -LiteralPath $work -Recurse -Force } catch {} }
     }
 }
 
@@ -335,7 +335,7 @@ function Sync-HerdrRtlConfig {
     param($Source, $Profile = $script:ActiveProfile)
     $path = Get-HerdrRtlConfigPath -Profile $Profile
     $dir = Split-Path $path -Parent
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($dir)) | Out-Null }
 
     $text = $null
     if (Test-Path $path) {
@@ -356,7 +356,7 @@ function Sync-HerdrRtlConfig {
     $appCfg = if ($cfg.apps) { $cfg.apps.$($Profile.Id) } else { $null }
     $value = Get-HerdrBidiValue -Config $appCfg
     $text = Set-HerdrTomlKey -Text $text -Section 'terminal' -Key 'bidi' -Value $value
-    [IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText((Get-RtlSafePath -Path ($path)), $text, (New-Object System.Text.UTF8Encoding $false))
     Write-RtlLog "Herdr RTL config: [terminal] bidi = `"$value`" ($path)"
     return $value
 }
@@ -417,7 +417,7 @@ function New-HerdrRtlLauncher {
     $exe = Join-Path $script:CopyRoot 'herdr.exe'
     $data = Get-HerdrRtlDataDir -Profile $Profile
     $state = Get-HerdrRtlStateHome -Profile $Profile
-    foreach ($d in @($data, $state)) { if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null } }
+    foreach ($d in @($data, $state)) { if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($d)) | Out-Null } }
 
     $lines = @(
         '@chcp 65001 >nul',
@@ -450,7 +450,7 @@ function New-HerdrRtlLauncher {
     # UTF-8 WITHOUT a BOM (a BOM is parsed as literal command text by cmd.exe), paired with the
     # chcp 65001 first line, so a non-ASCII profile path in the XDG vars survives intact instead
     # of being replaced with '?' by ASCIIEncoding.
-    [IO.File]::WriteAllText($path, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText((Get-RtlSafePath -Path ($path)), (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding $false))
     Write-RtlLog "Wrote launcher $path"
     return $path
 }
@@ -466,8 +466,8 @@ function Install-HerdrRtlIcon {
     if (-not $src) { return $null }
     $dst = Join-Path $script:StateDir 'herdr-rtl.ico'
     try {
-        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
-        Copy-Item -LiteralPath $src -Destination $dst -Force
+        if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path (Get-RtlSafePath -Path ($script:StateDir)) | Out-Null }
+        Copy-RtlSafeItem -LiteralPath $src -Destination $dst -Force
         return $dst
     } catch {
         Write-RtlLog "could not place the herdr icon: $($_.Exception.Message)"
@@ -502,7 +502,7 @@ function New-HerdrRtlShortcut {
     $ws = New-Object -ComObject WScript.Shell
     foreach ($lnk in @($script:ShortcutStart, $script:ShortcutDesktop)) {
         try {
-            $sc = $ws.CreateShortcut($lnk)
+            $sc = $ws.CreateShortcut((Get-RtlSafePath -Path ($lnk)))
             $sc.TargetPath       = $target
             $sc.Arguments        = $args
             # Start in the user's home, never in the copy: cmd.exe keeps its
