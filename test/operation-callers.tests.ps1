@@ -123,6 +123,19 @@ foreach($throwInWorker in @($false,$true)) {
     $expected=if($throwInWorker){'Failed'}else{'Partial'}
     $rows.Add([pscustomobject]@{Case=('actual-runspace:'+ $expected);Passed=[bool]($workerSync.Done -and $workerSync.Results.Status -eq $expected -and $probe.Saved -eq 1 -and $probe.Agent -eq 0)})
 }
+# Execute the real state-to-buttons mapping with plain objects, never WinForms.
+$gui=Read-Ast 'scripts/Install-DesktopRtlGui.ps1'
+$buttons=$gui.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Update-Buttons'},$true)
+. ([scriptblock]::Create($buttons.Extent.Text))
+function Get-CodexRtlStatus { $script:fixtureStatus }
+$script:ActiveProfile=[pscustomobject]@{Id='herdr';DisplayName='Herdr'}
+$script:Sync=@{Busy=$false}
+foreach($case in @(@{Name='managed-without-exe-or-source';Managed=$true;Copy=$false;Visible=$true},@{Name='copy-without-source';Managed=$true;Copy=$true;Visible=$true},@{Name='retained-data-only';Managed=$false;Copy=$false;Visible=$false})) {
+    foreach($name in @('btnPrimary','btnSecondary','btnUninstall','btnDiag','btnCopyLog','btnBundle','btnOpenLogs','btnClose','status')){Set-Variable -Name $name -Value ([pscustomobject]@{Enabled=$false;Visible=$false;Text='';Tag=''})}
+    $script:fixtureStatus=[pscustomobject]@{State='Repair';Managed=$case.Managed;CopyExists=$case.Copy;CodexFound=$false}
+    Update-Buttons
+    $rows.Add([pscustomobject]@{Case=('gui-discovery:'+ $case.Name);Passed=[bool]($btnUninstall.Visible -eq $case.Visible -and $btnPrimary.Tag -eq 'recheck');UninstallVisible=$btnUninstall.Visible})
+}
 $hashes=@{}
 foreach($file in @('Install-DesktopRtl.ps1','Update-DesktopRtl.ps1','Uninstall-DesktopRtl.ps1','Install-DesktopRtlGui.ps1','DesktopRtlTray.ps1','DesktopRtlSettings.ps1')){$hashes[$file]=(Get-FileHash -LiteralPath (Join-Path $RepoRoot ('scripts\'+$file)) -Algorithm SHA256).Hash}
 $report=[pscustomobject]@{PowerShell=$PSVersionTable.PSVersion.ToString();Scripts=$hashes;Isolation='Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Two actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.';Cases=@($rows.ToArray())}

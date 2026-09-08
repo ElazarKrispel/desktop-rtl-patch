@@ -1,12 +1,12 @@
 {
   "PowerShell": "7.6.5",
   "Scripts": {
-    "Install-DesktopRtlGui.ps1": "1778F3904A5FD51B3182A165EA736D228FBB7F75C7343E0A65F9CE517E6758FB",
-    "DesktopRtlTray.ps1": "D8A7F464C230650D9B4DBA01E5DFCD9A9B02EB36FC79E7EB3FC75D6C8B643EDA",
-    "DesktopRtlSettings.ps1": "E627AD6F55C69650C530FC3595A5F57B999B3F63AEF6196F01415C049AC77F05",
-    "Update-DesktopRtl.ps1": "C707CCF293EC310CF3C351AAA57D763B6596272513126D485380FC41A5F7B03F",
-    "Install-DesktopRtl.ps1": "4B8DAD12990115C90CCF35CA1A584EDDD7DC5CC1AFBD54FBF7E0CB6BE8AD769A",
-    "Uninstall-DesktopRtl.ps1": "8770BBB37559588682F56441F3671CBF53B9E7C1EA6BE4A3E95885B5C61867DE"
+    "DesktopRtlSettings.ps1": "8E39D873276C4FBBBE7C654EDD5ACA27E070200C679CAEDA819649DCD843A8F0",
+    "Uninstall-DesktopRtl.ps1": "C60C02D97C7E7A41ACBB5F8EB4FA053B128003345215997A18A53484210F89FE",
+    "DesktopRtlTray.ps1": "988029133EBEB51E89A18BA05C9227496BE8C54F9384E33BB979B95F04D43259",
+    "Install-DesktopRtlGui.ps1": "DC0DC092AD62B23FE1923212DFA46B62CA41F4DC26E5ED051892A3F8E56F35AE",
+    "Update-DesktopRtl.ps1": "266B99B53F92971CDDAB7E20F6A74C95392C141C86048FF8F09EF0810094F68B",
+    "Install-DesktopRtl.ps1": "58440BE8FB27203F600370DCC0704378329D34B6DE81D18B528292B6396AE268"
   },
   "Isolation": "Real caller scriptblocks and CLI scripts, synthetic engine results, mocked agent lifecycle, persistence and dialog. Two actual runspace workers with synthetic dependencies. No actual UI, processes, Registry or events.",
   "Cases": [
@@ -357,6 +357,21 @@
     {
       "Case": "actual-runspace:Failed",
       "Passed": true
+    },
+    {
+      "Case": "gui-discovery:managed-without-exe-or-source",
+      "Passed": true,
+      "UninstallVisible": true
+    },
+    {
+      "Case": "gui-discovery:copy-without-source",
+      "Passed": true,
+      "UninstallVisible": true
+    },
+    {
+      "Case": "gui-discovery:retained-data-only",
+      "Passed": true,
+      "UninstallVisible": false
     }
   ]
 }

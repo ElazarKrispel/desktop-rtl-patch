@@ -283,9 +283,9 @@ function Update-Buttons {
         return
     }
     if (-not $st -or -not $st.CodexFound) {
-        if ($st -and $st.CopyExists) {
-            # The original was uninstalled but our RTL copy is still here (SourceMissing).
-            $status.Text = "$appName המקורי הוסר מהמחשב. אפשר להסיר את עותק ה-RTL, או להתקין מחדש את $appName ואז ""בדוק שוב""."
+        if ($st -and ($st.CopyExists -or $st.Managed)) {
+            # Receipts and other owned remnants remain removable without an exe or source.
+            $status.Text = "$appName המקורי אינו זמין. נמצאו עותק RTL או שאריות התקנה שאפשר להסיר. אפשר גם להתקין מחדש את $appName ואז ללחוץ ""בדוק שוב""."
             $btnUninstall.Visible = $true; $btnUninstall.Enabled = $true
         } else {
             $status.Text = "$appName אינו מותקן. התקן/י אותו ואז לחץ/י ""בדוק שוב""."

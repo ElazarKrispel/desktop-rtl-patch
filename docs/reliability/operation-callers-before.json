@@ -352,6 +352,21 @@
                   {
                       "Case":  "actual-runspace:Failed",
                       "Passed":  false
+                  },
+                  {
+                      "Case":  "gui-discovery:managed-without-exe-or-source",
+                      "Passed":  false,
+                      "UninstallVisible":  false
+                  },
+                  {
+                      "Case":  "gui-discovery:copy-without-source",
+                      "Passed":  true,
+                      "UninstallVisible":  true
+                  },
+                  {
+                      "Case":  "gui-discovery:retained-data-only",
+                      "Passed":  true,
+                      "UninstallVisible":  false
                   }
               ]
 }

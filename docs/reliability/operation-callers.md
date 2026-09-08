@@ -28,7 +28,9 @@ uninstall has saved and displayed its result. Forced termination of the operatin
 system process cannot guarantee completion; the cleanup receipt remains the
 recovery mechanism for an interrupted operation.
 
-The GUI and tray show `VerificationPending` as requiring repair. GUI runtime
+The GUI retains its removal action when managed artifacts remain but both the
+executable and source are absent. Retained user data alone does not expose an
+installation removal action. The GUI and tray show `VerificationPending` as requiring repair. GUI runtime
 dialogs and the renderer are otherwise unchanged.
 
 ## Evidence
@@ -41,15 +43,17 @@ persistence and dialog boundaries. GUI/tray worker bodies are obtained from the
 actual source AST and executed without constructing windows. Two additional
 cases use actual PowerShell runspaces with that same synthetic library.
 
-- [Baseline evidence](operation-callers-before.json): 17/59 passed, 42 failed.
+- [Baseline evidence](operation-callers-before.json): 19/62 passed, 43 failed.
   Missing managed completion is recorded as a failed requirement; these entries
   are not claims that the old hidden uninstall process ran in the test.
-- [After, Windows PowerShell 5.1](operation-callers-after.json): 60/60 passed.
-- [After, PowerShell 7.6.5](operation-callers-after-ps7.json): 60/60 passed.
+- [After, Windows PowerShell 5.1](operation-callers-after.json): 63/63 passed.
+- [After, PowerShell 7.6.5](operation-callers-after-ps7.json): 63/63 passed.
 
 Cases cover the seven result statuses in each consumer, worker exceptions,
 settings fallback, durable-save failure with leftover preservation, and dialog
-then acknowledgment then cleanup ordering. Script hashes and runtime versions
+then acknowledgment then cleanup ordering. The actual GUI button-mapping function
+also runs against three plain-object status fixtures, including a managed receipt
+without an executable or source. Script hashes and runtime versions
 are recorded. The baseline has one missing-completion entry where the fixed
 version runs two concrete completion-order cases.
 
