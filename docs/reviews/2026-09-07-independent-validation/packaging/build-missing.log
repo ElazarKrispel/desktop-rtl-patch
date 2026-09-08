@@ -1,0 +1,18 @@
+  staged: scripts
+  skip (missing): src
+  skip (missing): test
+  skip (missing): assets
+  skip (missing): install.ps1
+  skip (missing): Install-Desktop-RTL.vbs
+  skip (missing): Install-Desktop-RTL.cmd
+  skip (missing): Desktop-RTL-Tray.vbs
+  skip (missing): Desktop-RTL-Settings.vbs
+  skip (missing): README.md
+  skip (missing): LICENSE
+
+Release asset : C:\rtl-audit-20260907-fixtures\packaging-ee54864752064789a9426f3b74a80159\build\dist\desktop-rtl-patch-0.0.0.zip
+Checksums     : C:\rtl-audit-20260907-fixtures\packaging-ee54864752064789a9426f3b74a80159\build\dist\SHA256SUMS.txt
+SHA-256       : 11c837fb3e2693314e62663c39bad13e97c49771170af3137f946d0fdcf74fa2
+
+Next (manual, after approval):
+  gh release create v0.0.0 "C:\rtl-audit-20260907-fixtures\packaging-ee54864752064789a9426f3b74a80159\build\dist\desktop-rtl-patch-0.0.0.zip" "C:\rtl-audit-20260907-fixtures\packaging-ee54864752064789a9426f3b74a80159\build\dist\SHA256SUMS.txt" --title v0.0.0 --notes ...

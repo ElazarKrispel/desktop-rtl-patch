@@ -1,0 +1,181 @@
+{
+    "baseline":  "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+    "environment":  {
+                        "powershell":  "5.1.26100.9168",
+                        "os":  "Microsoft Windows NT 10.0.26200.0"
+                    },
+    "scope":  "Exact AST-loaded production function bodies, host boundaries stubbed; not GUI/install E2E",
+    "loaded":  [
+                   {
+                       "end":  676,
+                       "name":  "Assert-RtlWriteAllowed",
+                       "start":  662
+                   },
+                   {
+                       "end":  2495,
+                       "name":  "ConvertTo-RtlCanonicalPath",
+                       "start":  2489
+                   },
+                   {
+                       "end":  2507,
+                       "name":  "Test-RtlPathUnderRoot",
+                       "start":  2496
+                   },
+                   {
+                       "end":  1574,
+                       "name":  "New-RtlLaunchScript",
+                       "start":  1537
+                   },
+                   {
+                       "end":  633,
+                       "name":  "Join-RtlTree",
+                       "start":  629
+                   },
+                   {
+                       "end":  175,
+                       "name":  "Read-RtlState",
+                       "start":  172
+                   },
+                   {
+                       "end":  1894,
+                       "name":  "Get-CodexRtlStatus",
+                       "start":  1857
+                   },
+                   {
+                       "end":  1812,
+                       "name":  "Get-RtlBlockRecord",
+                       "start":  1804
+                   },
+                   {
+                       "end":  1821,
+                       "name":  "Test-RtlUpdateBlocked",
+                       "start":  1816
+                   },
+                   {
+                       "end":  1836,
+                       "name":  "Set-RtlBlocked",
+                       "start":  1829
+                   },
+                   {
+                       "end":  1839,
+                       "name":  "Clear-RtlBlocked",
+                       "start":  1837
+                   },
+                   {
+                       "end":  1855,
+                       "name":  "Test-RtlShouldLatchError",
+                       "start":  1852
+                   },
+                   {
+                       "end":  2146,
+                       "name":  "Invoke-CodexRtlUpdate",
+                       "start":  1898
+                   },
+                   {
+                       "end":  607,
+                       "name":  "Invoke-HerdrRtlInstall",
+                       "start":  533
+                   },
+                   {
+                       "end":  245,
+                       "name":  "Invoke-HerdrRtlBuild",
+                       "start":  220
+                   },
+                   {
+                       "end":  192,
+                       "name":  "Resolve-HerdrRtlArtifact",
+                       "start":  137
+                   },
+                   {
+                       "end":  456,
+                       "name":  "New-HerdrRtlLauncher",
+                       "start":  415
+                   },
+                   {
+                       "end":  291,
+                       "name":  "Get-HerdrRtlDataDir",
+                       "start":  291
+                   },
+                   {
+                       "end":  292,
+                       "name":  "Get-HerdrRtlStateHome",
+                       "start":  292
+                   },
+                   {
+                       "end":  912,
+                       "name":  "Start-RtlCopyApp",
+                       "start":  886
+                   }
+               ],
+    "F01":  [
+                {
+                    "ownershipGuardAccepted":  false,
+                    "name":  "direct",
+                    "writeGuardAccepted":  false
+                },
+                {
+                    "ownershipGuardAccepted":  true,
+                    "name":  "junction",
+                    "writeGuardAccepted":  true
+                },
+                {
+                    "ownershipGuardAccepted":  true,
+                    "name":  "hardlink",
+                    "writeGuardAccepted":  true
+                },
+                {
+                    "ownershipGuardAccepted":  false,
+                    "name":  "prefix",
+                    "writeGuardAccepted":  false
+                }
+            ],
+    "F05":  [
+                {
+                    "failureCount":  1,
+                    "pass":  1,
+                    "error":  "[ARTIFACT] Could not download the Herdr RTL build (https://github.com/fixture/fixture/releases/download/fixture-build/fixture.zip): Synthetic timeout",
+                    "networkHealthy":  false,
+                    "downloadCalls":  1,
+                    "blocked":  false
+                },
+                {
+                    "failureCount":  2,
+                    "pass":  2,
+                    "error":  "[ARTIFACT] Could not download the Herdr RTL build (https://github.com/fixture/fixture/releases/download/fixture-build/fixture.zip): Synthetic timeout",
+                    "networkHealthy":  false,
+                    "downloadCalls":  1,
+                    "blocked":  true
+                },
+                {
+                    "failureCount":  2,
+                    "pass":  3,
+                    "error":  null,
+                    "networkHealthy":  true,
+                    "downloadCalls":  0,
+                    "blocked":  true
+                }
+            ],
+    "F06":  {
+                "vbsContainsReplacement":  true,
+                "herdrCmdPreservesHebrew":  true,
+                "vbsPreservesHebrew":  false,
+                "herdrCmdFirstLine":  "@chcp 65001 \u003enul"
+            },
+    "F08Status":  {
+                      "result":  "Fresh",
+                      "blockedError":  null,
+                      "stateExists":  false,
+                      "quarantineExists":  true
+                  },
+    "N05HerdrOpen":  {
+                         "result":  true,
+                         "generatedLauncherSetsXdg":  true,
+                         "capture":  {
+                                         "xdgState":  null,
+                                         "work":  "\u003cfixture\u003e\\אבג copy space",
+                                         "file":  "herdr.exe",
+                                         "xdgConfig":  null,
+                                         "herdrBin":  null
+                                     }
+                     }
+}

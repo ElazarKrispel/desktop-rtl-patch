@@ -1,0 +1,49 @@
+{
+    "sourceCommit":  "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+    "os":  "Microsoft Windows NT 10.0.26200.0",
+    "psVersion":  "5.1.26100.9168",
+    "tests":  [
+                  {
+                      "id":  "F10-asset",
+                      "expected":  "product.zip",
+                      "actual":  "https://fixture.invalid/debug.zip",
+                      "reproduced":  true,
+                      "scope":  "Exact pure production function, synthetic metadata"
+                  },
+                  {
+                      "id":  "F10-checksum",
+                      "expected":  "Reject wrong filename",
+                      "actual":  "Rejected=False",
+                      "reproduced":  true,
+                      "scope":  "Exact production condition only; not a network or authenticity test"
+                  },
+                  {
+                      "id":  "F10-package-validator",
+                      "expected":  "Reject absent GUI, tray, Herdr dependency",
+                      "actual":  true,
+                      "reproduced":  true,
+                      "scope":  "Exact production helper on four dummy files"
+                  },
+                  {
+                      "id":  "F10-build-missing",
+                      "expected":  "Nonzero, no distributable",
+                      "actualExit":  0,
+                      "zipExists":  true,
+                      "reproduced":  true,
+                      "scope":  "Unchanged full build script in fresh fixture missing src, launchers and runtime; never published"
+                  },
+                  {
+                      "id":  "F10-bootstrap-fallback",
+                      "expected":  "Fail on checksum request timeout",
+                      "actual":  "Source archive requested then fixture stopped before extraction",
+                      "reproduced":  true,
+                      "requests":  [
+                                       "https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.5.0/desktop-rtl-patch-2.5.0.zip",
+                                       "https://github.com/ElazarKrispel/desktop-rtl-patch/releases/download/v2.5.0/SHA256SUMS.txt",
+                                       "https://github.com/ElazarKrispel/desktop-rtl-patch/archive/refs/tags/v2.5.0.zip"
+                                   ],
+                      "scope":  "Full bootstrap with only network/extraction/process boundaries stubbed; no install or real network"
+                  }
+              ],
+    "fixturePolicy":  "No registry, events, shortcuts or application processes; fixture retained, no recursive cleanup"
+}

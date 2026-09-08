@@ -1,0 +1,13 @@
+{
+  "baseline": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "powershell": "5.1.26100.9168",
+  "trackedPs1Parsed": 18,
+  "parseErrors": 0,
+  "node": "v24.14.0",
+  "nodeChecks": [
+    {"path": "scripts/lib/asar-edit.mjs", "exitCode": 0},
+    {"path": "src/desktop-rtl-patch.js", "exitCode": 0}
+  ],
+  "scope": "Static parse and syntax checks only; no full library loading, UI or product lifecycle run. Recorded from completed shell results."
+}

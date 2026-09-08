@@ -1,0 +1,251 @@
+{
+  "commit": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "downloadedAsset": "desktop-rtl-patch-2.5.0.zip",
+  "bytes": 1026766,
+  "sha256": "f7a7e612ec3627c501291433a22a3e41ee4729711535e95a1c9e409f686db8e8",
+  "exactPublishedChecksumMatch": true,
+  "githubMetadataDigestMatch": true,
+  "archiveRoot": "desktop-rtl-patch-2.5.0",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 203,
+      "sha256": "ec5b56f156d044d7aa51de5f73c4b4d49f59869f260ad10729ec7b66201f47a7",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 433,
+      "sha256": "56b11bc17d579282d63f8443331a652d54a5a70a5da3409486b8f20cf717f7b3",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "Desktop-RTL-Settings.vbs",
+      "bytes": 948,
+      "sha256": "8c3bc64d86643a932ea627f0cb8af285adf4d771b19228b1ce17768c400338c1",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "Desktop-RTL-Tray.vbs",
+      "bytes": 804,
+      "sha256": "b580e923e2449188873ed07207c3231c372eed98d0a09321b0d2d4c8807e62f0",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "Install-Desktop-RTL.cmd",
+      "bytes": 471,
+      "sha256": "d20703cd15ebeaee8f32e8199a7cddb5acda8f14ef1e2aeaf30ba2f50cae94e0",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "Install-Desktop-RTL.vbs",
+      "bytes": 606,
+      "sha256": "94a44c0509a1f4be766483bc9e4f971a50474ef8569e81629f6ad702577abe97",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1092,
+      "sha256": "86f1e0ccb5f9d082f25c0c948818300f43178e4f25f5293f2d0cd8eae23f2b2e",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "README.md",
+      "bytes": 22349,
+      "sha256": "cce2f435260e8c4d0e99b00f760f35f31773c1b0f757cb5ef1500a0b4c01d03a",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/banner.svg",
+      "bytes": 113657,
+      "sha256": "64f5eb47fe8106126383a162fd4245975971ff6e73886b1a2903ff0d721abbf7",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "assets/before-after.png",
+      "bytes": 57007,
+      "sha256": "360caca9fa2da4f725a09184bc648ba8810dbcaef8427d14ca2d7022321a6698",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/desktop-rtl.ico",
+      "bytes": 98821,
+      "sha256": "a0cc660226c679bfdbad2619ff095a060d6bd91b5020f120d84433de78cbdca7",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/herdr-rtl.ico",
+      "bytes": 369214,
+      "sha256": "bbfd07c0802a3d59821d06f3f868db35f2acae83a27e72d970367eb1efa7e979",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/installer.png",
+      "bytes": 44232,
+      "sha256": "73648b1ca6001b21f9c8abba1092416742ba3953c8b2a7bcaf0cb4b78455f028",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/logo.png",
+      "bytes": 82795,
+      "sha256": "058bbf3ed16db71883cb5bbf9dfea2061f6bd869663599c732bc2d9538d75e26",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/social-preview.png",
+      "bytes": 414030,
+      "sha256": "c777d9d16f715023b7c335a9785eef4f0c7c56574f8a3d5da1a4c3e90f86d450",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "assets/social-preview.svg",
+      "bytes": 113416,
+      "sha256": "048c283a2ded8fac2158750257055b446fcb1726443d3b0c2937b6d2bd555c83",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "install.ps1",
+      "bytes": 4480,
+      "sha256": "b7ff377c0ab56c9fa3a6c97ab29294178654ced1f458e8838d62d6a4df7fb0da",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/Build-Release.ps1",
+      "bytes": 2469,
+      "sha256": "e60cfe3291b08e0036dae74021a31a5285ac16179aa8b3198a853229a47f56d5",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/DesktopRtlSettings.ps1",
+      "bytes": 16555,
+      "sha256": "53718b1f15e61c227991aefa2472756e6b6bd2f85e32e6d7e2f20b72d28ced10",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/DesktopRtlTray.ps1",
+      "bytes": 34304,
+      "sha256": "d792ecc8639275c4a6c8dc0d2ba061634441a7ac855f985f793d94087db33723",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/Install-DesktopRtl.ps1",
+      "bytes": 2988,
+      "sha256": "380838618d1e2ce205fbe8ff6bedde55ae75dbdb6ffb26bbb8fffdda5e126667",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/Install-DesktopRtlGui.ps1",
+      "bytes": 30942,
+      "sha256": "0a4242acf4e440de977acacf19cea2ff88d79ad445a44722a664adcc35cd2789",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/Uninstall-DesktopRtl.ps1",
+      "bytes": 2474,
+      "sha256": "6c065c05962ff80e34193533d5e3179c54213ae7ece47ef13a24a41d1c08882b",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/Update-DesktopRtl.ps1",
+      "bytes": 1063,
+      "sha256": "dc9ed52192c8d461448e937ec8cfa0020e5847fcb32c5320832ef1fbe351ea7d",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/Watch-DesktopRtl.ps1",
+      "bytes": 1389,
+      "sha256": "8483d7b726379039b21266e92884453933b3736f0c85e8478df0bf5d334880cf",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/lib/asar-edit.mjs",
+      "bytes": 21247,
+      "sha256": "900ab62bb4bbfddbc22c3c4af2cee011980512ad8d6e97961cc51850d899189e",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "scripts/lib/desktop-rtl-errors.ps1",
+      "bytes": 5265,
+      "sha256": "56a1061ea87a4413e6d9a57eb1b129ca1ccca420333b8cb194c52f4e9373b81f",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/lib/desktop-rtl-herdr.ps1",
+      "bytes": 32299,
+      "sha256": "7ac4821bda8736c5cf99d031049d28d268e75138e1487649439806b6523044b1",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "scripts/lib/desktop-rtl-lib.ps1",
+      "bytes": 179115,
+      "sha256": "863933955b0a29462925040950c9b7111aa57181b70a7a966182885c10bb0549",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "src/desktop-rtl-patch.js",
+      "bytes": 21731,
+      "sha256": "8fc59dc6488b66399f02f89bebe1232c3e2e6c783fccbcfa23e593b2d74124c0",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "test/bidi-harness.html",
+      "bytes": 6166,
+      "sha256": "8e1276ffc5304d1d72ef702dd5db34ae54998121b57d81b4a3786a9ae83f0e45",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "test/renderer-injection.harness.ps1",
+      "bytes": 35884,
+      "sha256": "653e5d7fc18e40e3767ba02ebd683b3278b7a84d5a0cc70e258296dafa7fe5fd",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "tools/Build-Banner.ps1",
+      "bytes": 12099,
+      "sha256": "b871c97fba3a26ab6b9a81fd4b085a38f95b42ec7507c730ab8634167afac638",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "tools/CAPTURE.md",
+      "bytes": 5997,
+      "sha256": "98e1c09c01fa7d63354219e86973ed3f41f8fafa7b2ff7f05554eb3156c8f549",
+      "comparison": "BYTE_IDENTICAL"
+    },
+    {
+      "path": "tools/Capture-Installer.ps1",
+      "bytes": 10121,
+      "sha256": "1038c08084951757d44cee7e9054d4ead106afb44322ba0452c06f454b351c4a",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "tools/Compose-Installer.ps1",
+      "bytes": 3672,
+      "sha256": "fba7dc8d2ae141b78b57c9cb34e173ae09270a0799f6aff36eef23692ceb1d6b",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "tools/Compose-Screens.ps1",
+      "bytes": 5799,
+      "sha256": "dad25dbae0041f2c415be4a9434cd4ed45ece89074a505ee09c2bd8c7b88d1ee",
+      "comparison": "LINE_ENDINGS_ONLY"
+    },
+    {
+      "path": "tools/Render-Assets.ps1",
+      "bytes": 4016,
+      "sha256": "6ebec6b17e4e948ad6aa5ce5277a907f3119e4ee872e6669ee4a34e729ad7bc3",
+      "comparison": "LINE_ENDINGS_ONLY"
+    }
+  ],
+  "missingFromIncludePolicy": [],
+  "extraFiles": [
+    ".gitattributes",
+    ".gitignore",
+    "tools/Build-Banner.ps1",
+    "tools/CAPTURE.md",
+    "tools/Capture-Installer.ps1",
+    "tools/Compose-Installer.ps1",
+    "tools/Compose-Screens.ps1",
+    "tools/Render-Assets.ps1"
+  ],
+  "scope": "Archive read in memory. No released script or application executed. CRLF-only differences are reported separately from byte identity."
+}

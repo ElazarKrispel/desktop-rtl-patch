@@ -1,0 +1,58 @@
+{
+  "source": "scripts/lib/asar-edit.mjs FULL CLI, no extraction",
+  "baseline": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "environment": {
+    "platform": "win32",
+    "node": "v24.14.0"
+  },
+  "isolation": "Only synthetic binaries and links within uniquely owned fixture; targets outside staging remain inside fixture. Fixtures retained, no recursive delete.",
+  "limitations": "Not installer E2E, not a real application, no TOCTOU simulation, no privilege escalation claim.",
+  "fileSymlink": "BLOCKED: EPERM",
+  "cases": [
+    {
+      "name": "direct-outside",
+      "exit": 1,
+      "physicalOutside": true,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1459\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\scripts\\lib\\asar-edit.mjs'\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\r\n    at node:internal/main/run_main_module:33:47 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v24.14.0"
+    },
+    {
+      "name": "normal-inside",
+      "exit": 1,
+      "physicalOutside": false,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1459\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\scripts\\lib\\asar-edit.mjs'\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\r\n    at node:internal/main/run_main_module:33:47 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v24.14.0"
+    },
+    {
+      "name": "junction-to-outside",
+      "exit": 1,
+      "physicalOutside": true,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1459\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\scripts\\lib\\asar-edit.mjs'\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\r\n    at node:internal/main/run_main_module:33:47 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v24.14.0"
+    },
+    {
+      "name": "hard-link-to-outside",
+      "exit": 1,
+      "physicalOutside": true,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1459\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\scripts\\lib\\asar-edit.mjs'\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\r\n    at node:internal/main/run_main_module:33:47 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v24.14.0"
+    },
+    {
+      "name": "prefix-lookalike",
+      "exit": 1,
+      "physicalOutside": true,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1459\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\scripts\\lib\\asar-edit.mjs'\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\r\n    at node:internal/main/run_main_module:33:47 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v24.14.0"
+    }
+  ]
+}

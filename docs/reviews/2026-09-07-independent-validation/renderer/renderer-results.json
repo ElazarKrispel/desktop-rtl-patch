@@ -1,0 +1,113 @@
+{
+  "date": "2026-09-07T16:54:31.838Z",
+  "baseline": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "source": "src/desktop-rtl-patch.js",
+  "sourceSha256": "8fc59dc6488b66399f02f89bebe1232c3e2e6c783fccbcfa23e593b2d74124c0",
+  "node": "v24.14.0",
+  "platform": "win32",
+  "tests": [
+    {
+      "id": "F09-prose-toggle",
+      "expected": "No prose element redirected",
+      "actual": {
+        "p": null,
+        "d": "rtl",
+        "s": "rtl",
+        "l": "rtl"
+      },
+      "status": "REPRODUCED"
+    },
+    {
+      "id": "F09-table-reuse",
+      "expected": "English table loses patch RTL and restores previous direction",
+      "actual": {
+        "initial": "rtl",
+        "afterCharacterData": "rtl",
+        "afterTableRescan": "rtl",
+        "cells": [
+          null,
+          null,
+          null,
+          null
+        ],
+        "marker": "rtl"
+      },
+      "status": "REPRODUCED"
+    },
+    {
+      "id": "F09-table-streaming",
+      "expected": "Ancestor table reacts to streamed cell text",
+      "actual": {
+        "initial": null,
+        "afterCharacterData": null,
+        "cells": [
+          "rtl",
+          "rtl",
+          "rtl",
+          "rtl"
+        ],
+        "afterTableRescan": "rtl"
+      },
+      "status": "REPRODUCED"
+    },
+    {
+      "id": "F09-dir-ownership",
+      "expected": "Restore original dir=ltr",
+      "actual": {
+        "initial": "rtl",
+        "after": null,
+        "owned": false
+      },
+      "status": "REPRODUCED"
+    },
+    {
+      "id": "F09-math-node-identity",
+      "expected": "Character data writer holding original node still updates visible text",
+      "actual": {
+        "originalConnected": false,
+        "before": "שלום 2 + 3 = 5 סוף",
+        "after": "שלום 2 + 3 = 5 סוף",
+        "heldNodeValue": "שלום 4 + 5 = 9 סוף",
+        "islands": 1,
+        "textPreservedInitially": true
+      },
+      "status": "REPRODUCED",
+      "scope": "Retained text-node simulation, NOT React or target app crash"
+    },
+    {
+      "id": "F09-positive-controls",
+      "expected": "Prose clears owned RTL; code stays LTR and unchanged; input reacts",
+      "actual": {
+        "initial": "rtl",
+        "proseAfter": null,
+        "codeDirection": "ltr",
+        "codeUnchanged": true,
+        "inputDirection": "ltr"
+      },
+      "status": "PASS"
+    },
+    {
+      "id": "F09-disabled",
+      "expected": "Disabled payload leaves content and DOM unchanged",
+      "actual": {
+        "dir": null,
+        "originalConnected": true,
+        "style": false
+      },
+      "status": "PASS"
+    }
+  ],
+  "limits": [
+    "Synthetic about:blank DOM on an isolated Chrome profile. Actual payload executed unchanged.",
+    "No real target apps, React runtime, clipboard, IME, undo, user profile or live install cycle tested.",
+    "Native MutationObserver and requestAnimationFrame; no scheduling mocks. No performance benchmark."
+  ],
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/152.0.7977.76",
+    "revision": "@0d89dfa2dd7c1ec4b8a14b9f303f887bb63b6174",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "jsVersion": "15.2.124.19"
+  },
+  "browserErrors": []
+}

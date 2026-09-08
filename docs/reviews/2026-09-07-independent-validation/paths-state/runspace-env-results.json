@@ -1,0 +1,14 @@
+{
+    "scope":  "Controlled interleaving of two real runspaces and exact production selector body; profiles/loggers synthetic; no app, child launcher, named event, registry or shortcuts",
+    "environment":  "5.1.26100.9168",
+    "limitation":  "Proves process environment interference, not real tray timing or application startup failure",
+    "afterA":  {
+                   "asar":  "1",
+                   "run":  "1"
+               },
+    "afterBObservedByA":  {
+                              "profile":  "fixture-electron",
+                              "run":  null,
+                              "asar":  null
+                          }
+}

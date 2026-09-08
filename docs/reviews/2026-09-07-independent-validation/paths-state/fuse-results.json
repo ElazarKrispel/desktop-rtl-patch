@@ -1,0 +1,64 @@
+{
+  "source": "scripts/lib/asar-edit.mjs FULL CLI, no extraction",
+  "baseline": "02cc70a8b750de4bc88b740cf8a64f292a5c0325",
+  "environment": {
+    "platform": "win32",
+    "node": "v24.14.0"
+  },
+  "isolation": "Only synthetic binaries and links within uniquely owned fixture; targets outside staging remain inside fixture. Fixtures retained, no recursive delete.",
+  "limitations": "Not installer E2E, not a real application, no TOCTOU simulation, no privilege escalation claim.",
+  "fileSymlink": "BLOCKED: EPERM",
+  "cases": [
+    {
+      "name": "direct-outside",
+      "exit": 22,
+      "physicalOutside": true,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "fuseoff refused: <fixture>\\outside\\fixture.bin is not under --root <fixture>\\staging"
+    },
+    {
+      "name": "normal-inside",
+      "exit": 0,
+      "physicalOutside": false,
+      "unchanged": false,
+      "changedOffsets": [
+        50
+      ],
+      "stdout": "fuseoff: asar-integrity disabled (1 byte @50, length 66 unchanged)",
+      "stderr": ""
+    },
+    {
+      "name": "junction-to-outside",
+      "exit": 0,
+      "physicalOutside": true,
+      "unchanged": false,
+      "changedOffsets": [
+        50
+      ],
+      "stdout": "fuseoff: asar-integrity disabled (1 byte @50, length 66 unchanged)",
+      "stderr": ""
+    },
+    {
+      "name": "hard-link-to-outside",
+      "exit": 0,
+      "physicalOutside": true,
+      "unchanged": false,
+      "changedOffsets": [
+        50
+      ],
+      "stdout": "fuseoff: asar-integrity disabled (1 byte @50, length 66 unchanged)",
+      "stderr": ""
+    },
+    {
+      "name": "prefix-lookalike",
+      "exit": 22,
+      "physicalOutside": true,
+      "unchanged": true,
+      "changedOffsets": [],
+      "stdout": "",
+      "stderr": "fuseoff refused: <fixture>\\staging-lookalike\\fixture.bin is not under --root <fixture>\\staging"
+    }
+  ]
+}

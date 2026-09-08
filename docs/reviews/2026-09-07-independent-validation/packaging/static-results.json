@@ -1,0 +1,110 @@
+[
+  {
+    "path": "install.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/Build-Release.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/DesktopRtlSettings.ps1",
+    "parseErrors": 0,
+    "utf8Bom": true,
+    "nonAsciiBytes": 1471
+  },
+  {
+    "path": "scripts/DesktopRtlTray.ps1",
+    "parseErrors": 0,
+    "utf8Bom": true,
+    "nonAsciiBytes": 1147
+  },
+  {
+    "path": "scripts/Install-DesktopRtl.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/Install-DesktopRtlGui.ps1",
+    "parseErrors": 0,
+    "utf8Bom": true,
+    "nonAsciiBytes": 3105
+  },
+  {
+    "path": "scripts/Uninstall-DesktopRtl.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/Update-DesktopRtl.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/Watch-DesktopRtl.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/lib/desktop-rtl-errors.ps1",
+    "parseErrors": 0,
+    "utf8Bom": true,
+    "nonAsciiBytes": 2973
+  },
+  {
+    "path": "scripts/lib/desktop-rtl-herdr.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "scripts/lib/desktop-rtl-lib.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "test/renderer-injection.harness.ps1",
+    "parseErrors": 0,
+    "utf8Bom": true,
+    "nonAsciiBytes": 3
+  },
+  {
+    "path": "tools/Build-Banner.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "tools/Capture-Installer.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "tools/Compose-Installer.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "tools/Compose-Screens.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  },
+  {
+    "path": "tools/Render-Assets.ps1",
+    "parseErrors": 0,
+    "utf8Bom": false,
+    "nonAsciiBytes": 0
+  }
+]
